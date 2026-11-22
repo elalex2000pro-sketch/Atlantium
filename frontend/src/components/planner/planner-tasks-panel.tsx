@@ -183,7 +183,7 @@ export function PlannerTasksPanel({
 
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                              <p className="truncate text-[12.5px] font-medium text-slate-700 dark:text-white/80">
+                              <p className="min-w-0 text-[12.5px] font-medium text-slate-700 [overflow-wrap:anywhere] dark:text-white/80">
                                 {task.title}
                               </p>
                             </div>
