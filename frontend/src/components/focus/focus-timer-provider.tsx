@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { api, tokenStore } from "@/lib/api";
 import { awardFocusXp } from "@/lib/gamification";
@@ -18,6 +17,7 @@ const FocusTimerContext = createContext({
   running: false,
   ready: false,
   finishing: false,
+  completed: false,
   sessionsDone: 0,
   notice: null as string | null,
   toggle: () => {},
@@ -50,7 +50,6 @@ function hasAccount(userId: string) {
 
 function AccountFocusTimer({ userId, children }: { userId: string; children: ReactNode }) {
   const key = timerKey(userId);
-  const pathname = usePathname();
   const [timer, setTimer] = useState<FocusTimer>(readyTimer);
   const [now, setNow] = useState(Date.now);
   const [ready, setReady] = useState(false);
@@ -157,11 +156,11 @@ function AccountFocusTimer({ userId, children }: { userId: string; children: Rea
 
   const deadline = ready && timer.status === "running" ? timer.endsAt : null;
   useEffect(() => {
-    if (deadline === null || pathname !== "/focus") return;
+    if (deadline === null) return;
     setNow(Date.now());
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [deadline, pathname]);
+  }, [deadline]);
 
   useEffect(() => {
     if (deadline === null) return;
@@ -200,6 +199,7 @@ function AccountFocusTimer({ userId, children }: { userId: string; children: Rea
       running: visibleTimer.status === "running",
       ready,
       finishing,
+      completed: visibleTimer.status === "saved",
       sessionsDone: ready ? sessionsDone : 0,
       notice,
       toggle: () => edit((current, time) => toggleTimer(current, time, () => crypto.randomUUID())),
