@@ -58,6 +58,8 @@ const HEADER_CONTROL =
 // blanca que rompía la continuidad del fondo.
 const HEADER_CONTROL_FLAT = "flex items-center justify-center p-2";
 
+const WIDE_CONTENT_ROUTES = new Set(["/classes", "/academics", "/library", "/documents", "/review"]);
+
 const HEADER_BUTTON =
   "h-9 w-9 rounded-full text-literal-3f3852 hover:bg-white/60 hover:text-text-on-selection dark:text-white/65 dark:hover:bg-white/10 dark:hover:text-white";
 
@@ -137,6 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isDashboard = pathname === "/";
   const isPlanner = pathname === "/planner";
   const isChat = pathname === "/chat";
+  const hasWideContent = WIDE_CONTENT_ROUTES.has(pathname) || pathname.startsWith("/classes/");
   const isImmersive = pathname === "/studio" || isBookReader || isChat;
 
   return (
@@ -223,7 +226,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Barra superior de escritorio: controles globales fuera del rail. */}
           {!isImmersive ? (
-            <header className="mx-auto hidden w-full max-w-7xl shrink-0 items-center justify-end gap-4 px-6 pb-2 pt-8 md:flex">
+            <header className={cn(
+              "mx-auto hidden w-full max-w-7xl shrink-0 items-center justify-end gap-4 px-6 pb-2 pt-8 md:flex",
+              hasWideContent && "2xl:max-w-content",
+            )}>
               <motion.div
                 whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -274,7 +280,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={cn(
                 "mx-auto w-full",
                 isChat && "px-4 py-4 md:pl-4 md:pr-5",
-                !isImmersive && (isDashboard ? "max-w-[1720px]" : isPlanner ? "max-w-[1800px]" : "max-w-7xl"),
+                (isChat || isPlanner) && "max-w-content",
+                isDashboard && "max-w-[1720px]",
+                !isImmersive && !isPlanner && !isDashboard && "max-w-7xl",
+                hasWideContent && "2xl:max-w-content",
               )}
             >
               <ErrorBoundary resetKey={pathname}>

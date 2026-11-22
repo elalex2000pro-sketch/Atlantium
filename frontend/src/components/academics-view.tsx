@@ -685,7 +685,7 @@ export function AcademicsView() {
   // El inset superior lo aporta el <main> del AppShell; aquí solo van los
   // márgenes laterales e inferiores para no duplicar la separación.
   return (
-    <motion.div variants={pageStagger} className="mx-auto max-w-7xl space-y-4 px-4 pb-12 md:px-6">
+    <motion.div variants={pageStagger} className="space-y-4 px-4 pb-12 md:px-6">
       <EditablePanels
         section="academics"
         label="Paneles de Académico"
@@ -815,7 +815,7 @@ export function AcademicsView() {
         </div>
 
         {loading ? (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">
             {[0, 1, 2, 3, 4, 5].map((item) => (
               <div
                 key={item}
@@ -834,7 +834,7 @@ export function AcademicsView() {
             </p>
           </div>
         ) : (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">
             {visibleCourses.map((course, index) => {
               const courseSummary = summaryByCourse.get(course.id);
               const average = courseSummary?.average_percent ?? null;

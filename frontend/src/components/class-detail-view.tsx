@@ -951,7 +951,7 @@ export default function ClassDetailView() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto space-y-4 p-4 sm:p-6">
       <Link
         href="/classes"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

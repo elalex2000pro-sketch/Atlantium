@@ -248,7 +248,7 @@ export default function LibraryView() {
   );
 
   return (
-    <motion.div variants={pageStagger} className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 lg:px-8">
+    <motion.div variants={pageStagger} className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 lg:px-8 2xl:max-w-none">
       <EditablePanels
         section="library"
         label="Paneles de Biblioteca"
@@ -499,7 +499,7 @@ export default function LibraryView() {
 
             <motion.div
               layout
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 min-[1800px]:grid-cols-5"
             >
               <AnimatePresence mode="popLayout" initial={false}>
               {visibleBooks.map((book) => {
