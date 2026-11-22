@@ -10,11 +10,21 @@ import {
   type ReactNode,
 } from "react";
 
+import { THEME_STORAGE_KEY } from "@/components/theme-provider";
+import { WALLPAPER_STORAGE_KEY } from "@/lib/wallpaper";
+
 const STORAGE_KEY = "academic-autopilot-preferences";
 
 export type AnimationLevel = "reduced" | "standard" | "ultra";
 export type PerformanceProfile = "efficiency" | "quality";
 export type GlassStyle = "standard" | "pure";
+export type InterfaceStyle = "glass" | "solid" | "wallpaper";
+export const WALLPAPER_PRESETS = [
+  { value: "coast", label: "Costa" },
+  { value: "forest", label: "Bosque" },
+  { value: "dusk", label: "Atardecer" },
+] as const;
+export type WallpaperPreset = (typeof WALLPAPER_PRESETS)[number]["value"];
 
 export interface Preferences {
   /** Aplica tachado y tono apagado a las vencidas dentro del historial. */
@@ -31,6 +41,8 @@ export interface Preferences {
   performanceProfile: PerformanceProfile;
   /** Nivel de transparencia del cristal: el actual o Pure Glass. */
   glassStyle: GlassStyle;
+  interfaceStyle: InterfaceStyle;
+  wallpaperPreset: WallpaperPreset;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -39,6 +51,8 @@ const DEFAULT_PREFERENCES: Preferences = {
   animationLevel: "standard",
   performanceProfile: "quality",
   glassStyle: "standard",
+  interfaceStyle: "glass",
+  wallpaperPreset: "coast",
 };
 
 const ANIMATION_LEVELS: AnimationLevel[] = ["reduced", "standard", "ultra"];
@@ -62,6 +76,9 @@ interface PreferencesContextValue extends Preferences {
   setAnimationLevel: (value: AnimationLevel) => void;
   setPerformanceProfile: (value: PerformanceProfile) => void;
   setGlassStyle: (value: GlassStyle) => void;
+  setInterfaceStyle: (value: InterfaceStyle) => void;
+  setWallpaperPreset: (value: WallpaperPreset) => void;
+  showAppearanceIntro: boolean;
   resetPreferences: () => void;
 }
 
@@ -101,6 +118,13 @@ function readPreferences(): Preferences {
       glassStyle: isGlassStyle(parsed.glassStyle)
         ? parsed.glassStyle
         : DEFAULT_PREFERENCES.glassStyle,
+      interfaceStyle:
+        parsed.interfaceStyle === "solid" || parsed.interfaceStyle === "wallpaper"
+          ? parsed.interfaceStyle
+          : "glass",
+      wallpaperPreset:
+        WALLPAPER_PRESETS.find(({ value }) => value === parsed.wallpaperPreset)?.value ??
+        DEFAULT_PREFERENCES.wallpaperPreset,
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -124,7 +148,9 @@ function applyInterfacePreferences(preferences: Preferences) {
   const root = document.documentElement;
   root.dataset.animations = preferences.animationLevel;
   root.dataset.performance = preferences.performanceProfile;
-  root.dataset.glass = preferences.glassStyle;
+  root.dataset.glass = preferences.interfaceStyle === "glass" ? preferences.glassStyle : "standard";
+  root.dataset.interfaceStyle = preferences.interfaceStyle;
+  root.dataset.wallpaperPreset = preferences.wallpaperPreset;
 }
 
 /**
@@ -142,19 +168,26 @@ function applyTitlebarToDesktop(value: boolean) {
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
+  const [showAppearanceIntro, setShowAppearanceIntro] = useState(false);
 
   // Mantiene los atributos del documento sincronizados con cada cambio. El
   // primer render usa los valores por defecto; el efecto de montaje aplica los
   // guardados y el script de `layout.tsx` los adelanta antes del primer pintado.
   useEffect(() => {
     applyInterfacePreferences(preferences);
-  }, [
-    preferences.animationLevel,
-    preferences.performanceProfile,
-    preferences.glassStyle,
-  ]);
+  }, [preferences]);
 
   useEffect(() => {
+    try {
+      const storage = window.localStorage;
+      setShowAppearanceIntro(
+        ![STORAGE_KEY, THEME_STORAGE_KEY, WALLPAPER_STORAGE_KEY].some(
+          (key) => storage.getItem(key) !== null,
+        ),
+      );
+    } catch {
+      // El tour requiere almacenamiento para recordar que ya se mostró.
+    }
     const stored = readPreferences();
     setPreferences(stored);
     applyInterfacePreferences(stored);
@@ -227,6 +260,23 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setInterfaceStyle = useCallback((value: InterfaceStyle) => {
+    setShowAppearanceIntro(false);
+    setPreferences((current) => {
+      const next = { ...current, interfaceStyle: value };
+      persistPreferences(next);
+      return next;
+    });
+  }, []);
+
+  const setWallpaperPreset = useCallback((value: WallpaperPreset) => {
+    setPreferences((current) => {
+      const next = { ...current, wallpaperPreset: value };
+      persistPreferences(next);
+      return next;
+    });
+  }, []);
+
   const resetPreferences = useCallback(() => {
     const next = { ...DEFAULT_PREFERENCES };
     setPreferences(next);
@@ -245,6 +295,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       setAnimationLevel,
       setPerformanceProfile,
       setGlassStyle,
+      setInterfaceStyle,
+      setWallpaperPreset,
+      showAppearanceIntro,
       resetPreferences,
     }),
     [
@@ -254,6 +307,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       setAutoStrikeOverdue,
       setPerformanceProfile,
       setGlassStyle,
+      setInterfaceStyle,
+      setWallpaperPreset,
+      showAppearanceIntro,
       setUseCustomTitlebar,
     ],
   );

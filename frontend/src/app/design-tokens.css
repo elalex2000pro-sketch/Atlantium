@@ -3,6 +3,17 @@
  * feed shared utilities. material-* are the original shared CSS materials.
  * Mode selection, compatibility aliases and cascade remain in the old CSS. */
 :root {
+  --interface-light-surface: #f1f2f6;
+  --interface-dark-surface: #202126;
+  --interface-light-inset: #e7e9f0;
+  --interface-dark-inset: #15161b;
+  --interface-light-coast: linear-gradient(145deg, #accbd5, #e5f1ed 55%, #b4ccd7);
+  --interface-dark-coast: linear-gradient(145deg, #244253, #15282d 55%, #2a4350);
+  --interface-light-forest: linear-gradient(145deg, #b2c8ae, #e1ebd6 55%, #a3c2ba);
+  --interface-dark-forest: linear-gradient(145deg, #314937, #1c2c24 55%, #28443d);
+  --interface-light-dusk: linear-gradient(145deg, #cec1e0, #f2d8d2 55%, #d7bad1);
+  --interface-dark-dusk: linear-gradient(145deg, #443753, #302633 55%, #573743);
+
   --theme-base-root-background: 214 16% 91%;
   --theme-base-root-foreground: 213 18% 21%;
   --theme-base-root-card: 214 20% 94%;

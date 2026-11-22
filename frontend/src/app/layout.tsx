@@ -13,6 +13,7 @@ import { WallpaperBackdrop } from "@/components/wallpaper-backdrop";
 import "./design-tokens.css";
 import "./globals.css";
 import "./v18-theme.css";
+import "./interface-style.css";
 
 export const metadata: Metadata = {
   title: {
@@ -49,7 +50,16 @@ const THEME_SCRIPT = `(function(){try{var k="academic-autopilot-theme-v18";var s
 
 // Aplica animaciones, perfil de rendimiento y estilo de cristal antes del
 // primer pintado para evitar destellos al cargar.
-const INTERFACE_SCRIPT = `(function(){try{var p=JSON.parse(localStorage.getItem("academic-autopilot-preferences")||"{}");var r=document.documentElement;var a=p&&p.animationLevel;var f=p&&p.performanceProfile;var g=p&&p.glassStyle;r.dataset.animations=a==="reduced"?"reduced":a==="ultra"||a==="fluid"?"ultra":"standard";r.dataset.performance=f==="efficiency"?"efficiency":"quality";r.dataset.glass=g==="pure"?"pure":"standard";}catch(e){}})();`;
+const INTERFACE_SCRIPT = `(function(){try{
+  var p=JSON.parse(localStorage.getItem("academic-autopilot-preferences")||"{}")||{};
+  var r=document.documentElement;
+  var a=p.animationLevel,f=p.performanceProfile,s=p.interfaceStyle,w=p.wallpaperPreset;
+  r.dataset.animations=a==="reduced"?"reduced":a==="ultra"||a==="fluid"?"ultra":"standard";
+  r.dataset.performance=f==="efficiency"?"efficiency":"quality";
+  r.dataset.interfaceStyle=s==="solid"||s==="wallpaper"?s:"glass";
+  r.dataset.wallpaperPreset=w==="forest"||w==="dusk"?w:"coast";
+  r.dataset.glass=r.dataset.interfaceStyle==="glass"&&p.glassStyle==="pure"?"pure":"standard";
+}catch(e){}})();`;
 
 // Captura el aviso de instalación en cuanto llega. Si se espera a que React
 // hidrate, algunos navegadores pueden emitirlo antes y perder la oportunidad

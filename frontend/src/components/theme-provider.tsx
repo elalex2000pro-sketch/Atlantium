@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
-const STORAGE_KEY = "academic-autopilot-theme-v18";
+export const THEME_STORAGE_KEY = "academic-autopilot-theme-v18";
 const DEFAULT_THEME: Theme = "light";
 const THEME_COLORS: Record<ResolvedTheme, string> = {
   light: "#f3f3f6",
@@ -39,7 +39,7 @@ function applyTheme(theme: Theme): ResolvedTheme {
 
 function storedTheme(): Theme {
   if (typeof window === "undefined") return DEFAULT_THEME;
-  const value = window.localStorage.getItem(STORAGE_KEY);
+  const value = window.localStorage.getItem(THEME_STORAGE_KEY);
   return value === "light" || value === "dark" || value === "system" ? value : DEFAULT_THEME;
 }
 
@@ -66,7 +66,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
-    window.localStorage.setItem(STORAGE_KEY, next);
+    window.localStorage.setItem(THEME_STORAGE_KEY, next);
     setResolvedTheme(applyTheme(next));
   }, []);
 

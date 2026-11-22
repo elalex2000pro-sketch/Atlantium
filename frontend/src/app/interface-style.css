@@ -1,0 +1,115 @@
+:root {
+  --interface-surface: var(--interface-light-surface);
+  --interface-inset: var(--interface-light-inset);
+  --interface-coast: var(--interface-light-coast);
+  --interface-forest: var(--interface-light-forest);
+  --interface-dusk: var(--interface-light-dusk);
+}
+
+:root.dark {
+  --interface-surface: var(--interface-dark-surface);
+  --interface-inset: var(--interface-dark-inset);
+  --interface-coast: var(--interface-dark-coast);
+  --interface-forest: var(--interface-dark-forest);
+  --interface-dusk: var(--interface-dark-dusk);
+}
+
+/* Incluye utilidades, estilos de rutas y diálogos montados en body. */
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) *,
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) *::before,
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) *::after,
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) *::backdrop {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-interface-style]:not([data-interface-style="glass"]) .wallpaper-layer {
+  display: none;
+}
+
+html[data-interface-style="wallpaper"] {
+  /* El reset global de html y body usa background: transparent !important. */
+  background-image: var(--interface-wallpaper, var(--interface-coast)) !important;
+  background-attachment: fixed !important;
+  background-size: cover !important;
+}
+
+html[data-interface-style="wallpaper"][data-wallpaper-preset="forest"] {
+  --interface-wallpaper: var(--interface-forest);
+}
+
+html[data-interface-style="wallpaper"][data-wallpaper-preset="dusk"] {
+  --interface-wallpaper: var(--interface-dusk);
+}
+
+html[data-interface-style]:not([data-interface-style="glass"]) .app-shell {
+  background-image: none;
+}
+
+html[data-interface-style]:not([data-interface-style="glass"]) {
+  --material-html-not-dark-bg-white-not-keep-white--background-color: var(--interface-surface);
+  --material-html-not-dark-bg-white-95-not-keep-white--background-color: var(--interface-surface);
+  --material-html-not-dark-bg-white-75-not-keep-white--background-color: var(--interface-surface);
+  --material-html-not-dark-bg-white-45-not-keep-white--background-color: var(--interface-inset);
+  --material-html-not-dark-bg-slate-50-not-keep-white--background-color: var(--interface-surface);
+  --material-html-not-dark-hover-bg-white-hover-not-keep-white--background-color: var(--interface-inset);
+  --material-html-not-dark-focus-visible-bg-white-55-focus-visible-not-keep-white--background-color: var(--interface-surface);
+}
+
+/* La tarjeta de bienvenida conserva su paleta clara con cualquiera de los temas. */
+html[data-interface-style]:not([data-interface-style="glass"]) [data-dashboard-hero] {
+  --interface-surface: var(--interface-light-surface);
+}
+
+html[data-interface-style]:not([data-interface-style="glass"])
+  :is(.app-glass, .app-glass-strong, .app-glass-soft, .glass-card, .glass-strong, .glass-panel, .glass-inset, .vibrancy, [data-onboarding], .chat-dialog),
+html[data-interface-style]:not([data-interface-style="glass"])
+  [class*="backdrop-blur"]:where(:not(.fixed.inset-0, .absolute.inset-0[aria-hidden="true"])) {
+  background: var(--interface-surface) !important;
+}
+
+html[data-interface-style]:not([data-interface-style="glass"]) .app-shell > div > header[class*="backdrop-blur"] {
+  background: var(--interface-surface) !important;
+}
+
+/* La navegación móvil y los controles sobre portadas y PDF usan texto claro. */
+html[data-interface-style]:not([data-interface-style="glass"]) :is(
+  [data-mobile-nav],
+  .bg-black\/30[class*="backdrop-blur"],
+  .bg-black\/35[class*="backdrop-blur"],
+  .pdf-reader [class~="bg-[#0a0a0a]/60"]
+) {
+  background: rgb(var(--surface-inverse)) !important;
+}
+
+html[data-interface-style]:not([data-interface-style="glass"])
+  :is([data-spotlight], .app-glass, .app-glass-strong, .glass-card, .glass-strong)::before,
+html[data-interface-style]:not([data-interface-style="glass"])
+  :is([data-spotlight], .app-glass, .app-glass-strong, .glass-card, .glass-strong)::after {
+  display: none;
+}
+
+.interface-preview {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 4px;
+  height: 40px;
+  padding: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: var(--interface-inset);
+}
+
+.interface-preview:is([data-preview="glass"], [data-preview="wallpaper"]) {
+  background: var(--interface-coast);
+}
+
+.interface-preview > span {
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: var(--interface-surface);
+}
+
+.interface-preview[data-preview="glass"] > span {
+  background: color-mix(in srgb, var(--interface-surface) 55%, transparent);
+}
