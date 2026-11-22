@@ -9,7 +9,7 @@ import { readError, nameOf, conversationTitle, conversationSubtitle, initials, m
 import { createPortal } from "react-dom";
 import "./chat-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, FileText, FolderOpen, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Search, UserPlus, X } from "lucide-react";
+import { Check, FileText, FolderOpen, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Search, UserPlus, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { ChatBackgroundPicker } from "@/components/chat-background-picker";
 import {
@@ -1059,8 +1059,7 @@ export function ChatView() {
               Tu espacio para conversar
             </h2>
             <p className="max-w-[270px] text-sm leading-relaxed text-muted-foreground">
-              Comparte apuntes, fotos e ideas con tus compañeros. Solo necesitas
-              su @usuario.
+              Comparte apuntes, fotos e ideas con tus compañeros.
             </p>
             <Button
               onClick={() => setDialogOpen(true)}
@@ -1437,7 +1436,6 @@ function NewConversationDialog({
             </div>
           ) : results.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
-              <AtSign className="mx-auto mb-1 h-5 w-5 opacity-50" />
               {query.trim()
                 ? "No encontramos ese @usuario."
                 : "Escribe el @usuario de tu compañero para empezar."}
