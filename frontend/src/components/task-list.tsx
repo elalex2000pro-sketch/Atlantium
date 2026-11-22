@@ -197,10 +197,10 @@ function TaskListComponent({
               style={{ backgroundColor: color }}
             />
             <span className="min-w-0 flex-1">
-              <span className="flex min-w-0 items-center gap-1.5">
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 <span
                   className={cn(
-                    "truncate text-[12.5px]",
+                    "min-w-0 text-[12.5px] [overflow-wrap:anywhere]",
                     isHistory
                       ? cn(
                           "text-slate-500 dark:text-white/45",
