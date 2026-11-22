@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { AppChrome } from "@/components/app-chrome";
 import { AppShell } from "@/components/app-shell";
 import { AuthProvider } from "@/components/auth-provider";
+import { FocusTimerProvider } from "@/components/focus/focus-timer-provider";
 import { BootSplash } from "@/components/boot-splash";
 import { PreferencesProvider } from "@/components/preferences-provider";
 import { PwaRegister } from "@/components/pwa-register";
@@ -82,10 +83,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <PreferencesProvider>
             <AuthProvider>
-              <RealtimeProvider>
-                <AppShell>{children}</AppShell>
-                <AppChrome />
-              </RealtimeProvider>
+              <FocusTimerProvider>
+                <RealtimeProvider>
+                  <AppShell>{children}</AppShell>
+                  <AppChrome />
+                </RealtimeProvider>
+              </FocusTimerProvider>
             </AuthProvider>
           </PreferencesProvider>
         </ThemeProvider>
