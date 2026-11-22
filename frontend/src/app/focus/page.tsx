@@ -18,21 +18,16 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { DailyFocus } from "@/components/daily-focus";
 import { AmbientPlayer } from "@/components/focus/ambient-player";
+import { useFocusTimer } from "@/components/focus/focus-timer-provider";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
-import { awardFocusXp, awardTaskXp } from "@/lib/gamification";
-import {
-  ensureSystemNotificationPermission,
-  showSystemNotification,
-} from "@/lib/system-notifications";
+import { awardTaskXp } from "@/lib/gamification";
+import { ensureSystemNotificationPermission } from "@/lib/system-notifications";
+import { DURATIONS } from "@/lib/focus-timer";
 import { markTaskCompleted, restoreTaskExclusion } from "@/lib/task-store";
 import type { DailyAgenda, FocusStats } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type TimerMode = "focus" | "break";
-
-const DURATIONS: Record<TimerMode, number> = { focus: 25 * 60, break: 5 * 60 };
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
@@ -49,13 +44,12 @@ export default function FocusPage() {
   const [loading, setLoading] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
 
-  const [mode, setMode] = useState<TimerMode>("focus");
-  const [secondsLeft, setSecondsLeft] = useState(DURATIONS.focus);
-  const [running, setRunning] = useState(false);
-  const [sessionsDone, setSessionsDone] = useState(0);
+  const {
+    mode, secondsLeft, running, ready, sessionsDone, finishing,
+    notice: timerNotice, toggle, reset, changeMode,
+  } = useFocusTimer();
   const [stats, setStats] = useState<FocusStats | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [finishing, setFinishing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,57 +70,11 @@ export default function FocusPage() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
     void loadStats();
-  }, [load, loadStats]);
-
-  useEffect(() => {
-    if (!running) return;
-    const interval = setInterval(() => {
-      setSecondsLeft((value) => Math.max(0, value - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [running]);
-
-  const completeSession = useCallback(async () => {
-    setFinishing(true);
-    try {
-      await api.logFocusSession(Math.round(DURATIONS[mode] / 60), mode);
-      if (mode === "focus") {
-        setSessionsDone((value) => value + 1);
-        if (user) awardFocusXp(user.id);
-        await loadStats();
-      }
-      void showSystemNotification({
-        title: mode === "focus" ? "Sesión completada" : "Descanso terminado",
-        body:
-          mode === "focus"
-            ? "Buen trabajo. Tómate 5 minutos antes de seguir."
-            : "Vuelve al enfoque cuando estés listo.",
-        tag: "focus-timer",
-      });
-    } catch (error) {
-      setNotice(errorMessage(error));
-    } finally {
-      setFinishing(false);
-    }
-  }, [mode, loadStats, user]);
-
-  useEffect(() => {
-    if (!running || secondsLeft > 0) return;
-    setRunning(false);
-    void completeSession();
-  }, [secondsLeft, running, completeSession]);
-
-  const changeMode = useCallback((next: TimerMode) => {
-    setRunning(false);
-    setMode(next);
-    setSecondsLeft(DURATIONS[next]);
-  }, []);
-
-  function reset() {
-    setRunning(false);
-    setSecondsLeft(DURATIONS[mode]);
-  }
+  }, [loadStats, sessionsDone]);
 
   async function askNotifications() {
     const granted = await ensureSystemNotificationPermission();
@@ -176,9 +124,9 @@ export default function FocusPage() {
         </Button>
       </header>
 
-      {notice && (
+      {(timerNotice ?? notice) && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          {notice}
+          {timerNotice ?? notice}
         </p>
       )}
 
@@ -253,8 +201,8 @@ export default function FocusPage() {
 
           <div className="mt-6 flex justify-center gap-2">
             <Button
-              onClick={() => setRunning((value) => !value)}
-              disabled={finishing}
+              onClick={toggle}
+              disabled={!ready || finishing}
               className="min-w-32"
             >
               {finishing ? (
@@ -264,7 +212,7 @@ export default function FocusPage() {
               ) : (
                 <Play className="h-4 w-4" />
               )}
-              {running ? "Pausar" : secondsLeft === DURATIONS[mode] ? "Empezar" : "Continuar"}
+              {running ? "Pausar" : (secondsLeft === DURATIONS[mode] || secondsLeft === 0) ? "Empezar" : "Continuar"}
             </Button>
             <Button variant="secondary" onClick={reset} aria-label="Reiniciar temporizador">
               <RotateCcw className="h-4 w-4" /> Reiniciar
