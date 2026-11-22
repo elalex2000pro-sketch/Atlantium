@@ -28,6 +28,24 @@
     inset 0 1px 0 rgb(255 255 255 / 0.07),
     0 24px 70px -45px #000;
 }
+
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) .chat-workspace {
+  --chat-pane: var(--interface-surface);
+  --chat-canvas: var(--interface-inset);
+  --chat-control: var(--interface-surface);
+}
+
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) .chat-bubble-received {
+  background: var(--interface-surface);
+}
+
+html:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) .chat-bubble-mine {
+  background: #d7f0df;
+}
+
+html.dark:is([data-interface-style="solid"], [data-interface-style="wallpaper"]) .chat-bubble-mine {
+  background: #234a3e;
+}
 .chat-sidebar {
   display: flex;
   width: 345px;

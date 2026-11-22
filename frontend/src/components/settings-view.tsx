@@ -33,8 +33,9 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import { InstallAppButton } from "@/components/install-app-button";
-import { usePreferences } from "@/components/preferences-provider";
+import { usePreferences, WALLPAPER_PRESETS } from "@/components/preferences-provider";
 import { GlassStylePicker } from "@/components/settings/glass-style-picker";
+import { InterfaceStylePicker } from "@/components/settings/interface-style-picker";
 import { PerformanceSettings } from "@/components/settings/performance-settings";
 import {
   CompactIntegrationCard,
@@ -188,6 +189,10 @@ export function SettingsView() {
     setAutoStrikeOverdue,
     useCustomTitlebar,
     setUseCustomTitlebar,
+    interfaceStyle,
+    setInterfaceStyle,
+    wallpaperPreset,
+    setWallpaperPreset,
     resetPreferences,
   } = usePreferences();
 
@@ -687,7 +692,7 @@ export function SettingsView() {
             <SettingsCard
               icon={Palette}
               title="Apariencia"
-              description="Tema, fondo y transparencia del cristal."
+              description="Tema y estilo de la interfaz."
             >
               <div className="space-y-4">
                 <ThemeToggle className="max-w-md" />
@@ -695,11 +700,30 @@ export function SettingsView() {
                   Con «Sistema» se sigue automáticamente la preferencia de tu dispositivo.
                 </p>
                 <div className="border-t border-slate-300/40 pt-4 dark:border-white/[0.06]">
-                  <GlassStylePicker />
+                  <InterfaceStylePicker label="Estilo de interfaz" value={interfaceStyle} onChange={setInterfaceStyle} />
                 </div>
-                <div className="border-t border-slate-300/40 pt-4 dark:border-white/[0.06]">
-                  <WallpaperPicker />
-                </div>
+                {interfaceStyle === "wallpaper" ? (
+                  <label className="block space-y-2 text-sm font-medium">
+                    <span>Fondo de pantalla</span>
+                    <select
+                      className="block w-full max-w-md rounded-xl border border-input bg-card p-2 text-foreground"
+                      value={wallpaperPreset}
+                      onChange={(event) => {
+                        const preset = WALLPAPER_PRESETS.find(({ value }) => value === event.target.value);
+                        if (preset) setWallpaperPreset(preset.value);
+                      }}
+                    >
+                      {WALLPAPER_PRESETS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : interfaceStyle === "glass" ? (
+                  <div className="space-y-4 border-t border-slate-300/40 pt-4 dark:border-white/[0.06]">
+                    <GlassStylePicker />
+                    <WallpaperPicker />
+                  </div>
+                ) : null}
               </div>
             </SettingsCard>
 

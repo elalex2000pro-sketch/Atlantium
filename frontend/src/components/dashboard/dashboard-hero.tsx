@@ -28,6 +28,7 @@ export function DashboardHero({
   return (
     <motion.section
       variants={DASHBOARD_ITEM}
+      data-dashboard-hero
       className="relative overflow-hidden rounded-[30px] border border-white/55 bg-[linear-gradient(118deg,#e9e4f8_0%,#f2eefb_52%,#ddd7f3_100%)] p-6 text-[#28233a] shadow-[0_22px_58px_-42px_rgba(55,45,90,0.4),inset_0_1px_0_rgba(255,255,255,0.82)] sm:p-7"
     >
       <div

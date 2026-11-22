@@ -69,14 +69,17 @@ async function main() {
     await until(async () => { try { return (await fetch(WEB + '/login')).ok; } catch { return false; } }, 'web startup', 180000);
   }
   assert.equal((await (await fetch(API + '/health')).json()).environment, 'isolated-chat-test', 'Never run against production');
+  const channel = process.env.SMOKE_BROWSER_CHANNEL || 'chrome';
+  browser = await chromium.launch({ headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], ...(channel === 'chromium' ? {} : { channel }) });
+  await require('./interface-style-e2e.cjs').verifyInterfaceStyle(browser, { WEB, request });
+  console.log('PASS appearance: onboarding, selector and persistence');
+  if (process.argv.includes('--appearance-only')) return;
   execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
   const { access_token: token } = await request('/auth/register', null, 'POST', { email: `smoke-${Date.now()}@example.com`, password: 'SmokeRouteTest123', full_name: 'Usuario de humo' });
   const user = await request('/auth/me', token);
   const group = await request('/classes', token, 'POST', { name: 'Clase de humo' });
   const office = await request('/office/documents', token, 'POST', { title: 'Documento de humo', content: '<h1>Documento de humo</h1><p>Contenido persistente.</p>' });
   await request('/notebooks', token, 'POST', { title: 'Cuaderno de humo' });
-  const channel = process.env.SMOKE_BROWSER_CHANNEL || 'chrome';
-  browser = await chromium.launch({ headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], ...(channel === 'chromium' ? {} : { channel }) });
   if (process.argv.includes('--deliveries-only')) {
     for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
       await require('./task-delivery-e2e.cjs').verifyTaskDeliveries(browser, { API, WEB, output, viewport });
