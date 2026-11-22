@@ -47,7 +47,7 @@ export function GamificationCard() {
       <motion.section
         variants={DASHBOARD_ITEM}
         aria-busy="true"
-        className="app-glass-strong relative overflow-hidden rounded-[26px] border border-white/45 px-4 py-3 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.55)] dark:border-white/10"
+        className="app-glass-strong relative max-w-xl overflow-hidden rounded-[26px] border border-white/45 px-4 py-3 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.55)] dark:border-white/10"
       >
         <div className="flex animate-pulse items-center gap-4">
           <div className="h-10 w-10 shrink-0 rounded-2xl bg-black/[0.06] dark:bg-white/[0.08]" />
@@ -65,7 +65,7 @@ export function GamificationCard() {
     <motion.section
       variants={DASHBOARD_ITEM}
       aria-label={`Nivel ${info.level}, ${info.title}, ${info.xp} EXP`}
-      className="app-glass-strong relative overflow-hidden rounded-[26px] border border-white/45 px-4 py-3 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.55)] dark:border-white/10"
+      className="app-glass-strong relative max-w-xl overflow-hidden rounded-[26px] border border-white/45 px-4 py-3 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.55)] dark:border-white/10"
     >
       <div
         aria-hidden="true"
