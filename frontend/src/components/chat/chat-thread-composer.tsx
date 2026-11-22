@@ -165,8 +165,7 @@ export function ChatThreadComposer({
                 </button>
               </div>
               <p className="mt-1.5 pl-2 text-[10px] text-muted-foreground">
-                Enter para enviar · Mayús + Enter para otra línea · Adjuntos
-                hasta 25 MB
+                Enter: enviar · Mayús + Enter: nueva línea · Máximo 25 MB
               </p>
             </div>
   );
