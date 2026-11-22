@@ -96,6 +96,7 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
   const [importing, setImporting] = useState(false);
   const [replace, setReplace] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickType, setQuickType] = useState<QuickEventType>("exam");
   const [quickTitle, setQuickTitle] = useState("");
   const [quickDate, setQuickDate] = useState(todayKey);
@@ -171,6 +172,12 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
       // Si falla la red se conserva la ultima lista conocida.
     }
   }, []);
+
+  useEffect(() => {
+    if (!quickAddOpen) return;
+    quickFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    quickTitleRef.current?.focus({ preventScroll: true });
+  }, [quickAddOpen]);
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -475,14 +482,12 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
     setConfirmDeleteClassId(null);
   }
 
-  function openQuickAdd(type: QuickEventType) {
-    setQuickType(type);
-    setQuickDate(selectedDay);
-    setNotice(null);
-    requestAnimationFrame(() => {
-      quickFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      quickTitleRef.current?.focus({ preventScroll: true });
-    });
+  function toggleQuickAdd() {
+    if (quickAddOpen) {
+      setQuickAddOpen(false);
+      return;
+    }
+    setQuickAddOpen(true);
   }
 
   async function addQuickEvent(event: React.FormEvent) {
@@ -867,9 +872,9 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
     <motion.div variants={pageStagger} className="px-4 pb-10 pt-5 sm:px-6 lg:pt-7 xl:px-8">
       <PlannerHeader
           monthPendingExamCount={monthPendingExamCount}
-          monthPending={monthPending}
           goToday={goToday}
-          openQuickAdd={openQuickAdd}
+          quickAddOpen={quickAddOpen}
+          toggleQuickAdd={toggleQuickAdd}
           notice={notice}
           setNotice={setNotice}
         />
@@ -888,6 +893,7 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
       <motion.div variants={pageItem} className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:gap-6">
         <aside className="order-2 space-y-4 xl:max-h-[calc(100dvh-6rem)] xl:overflow-y-auto xl:pr-1">
           <PlannerQuickEventForm
+          open={quickAddOpen}
           quickFormRef={quickFormRef}
           setQuickType={setQuickType}
           quickType={quickType}
@@ -908,6 +914,7 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
         />
 
           <PlannerOverview
+          showSelectedDay={viewMode !== "day"}
           selectedDay={selectedDay}
           setViewMode={setViewMode}
           selectedExams={selectedExams}
@@ -948,6 +955,9 @@ export function PlannerView({ defaultOpenTools = false }: { defaultOpenTools?: b
                   : viewMode === "week"
                     ? "Lunes a viernes · toca un día para ver su detalle"
                     : `${selectedClasses.length} clase${selectedClasses.length === 1 ? "" : "s"} · ${selectedExams.length === 1 ? "1 examen" : `${selectedExams.length} exámenes`} · ${selectedTasks.length} tarea${selectedTasks.length === 1 ? "" : "s"} · ${selectedImportantDates.length} fecha${selectedImportantDates.length === 1 ? "" : "s"} · ${selectedEvents.length} evento${selectedEvents.length === 1 ? "" : "s"}`}
+                {viewMode !== "month" && (
+                  <> · {monthPending} {monthPending === 1 ? "tarea pendiente" : "tareas pendientes"} en {monthLabel}</>
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

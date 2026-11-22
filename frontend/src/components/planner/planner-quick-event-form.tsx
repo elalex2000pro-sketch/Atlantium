@@ -2,7 +2,7 @@
 
 import type * as React from "react";
 import type { RefObject, Dispatch, SetStateAction } from "react";
-import { Loader2, Plus, Sparkles } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ const QUICK_EVENT_TABS: { id: QuickEventType; label: string }[] = [
 
 
 type Props = {
+  open: boolean;
   quickFormRef: RefObject<HTMLElement>;
   setQuickType: Dispatch<SetStateAction<QuickEventType>>;
   quickType: QuickEventType;
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export function PlannerQuickEventForm({
+  open,
   quickFormRef,
   setQuickType,
   quickType,
@@ -58,20 +60,10 @@ export function PlannerQuickEventForm({
   quickBusy,
 }: Props) {
   return (
-<section ref={quickFormRef} className="app-glass rounded-[26px] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/30">
-                  Alta rápida
-                </p>
-                <h2 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-slate-800 dark:text-white/90">
-                  Añadir al calendario
-                </h2>
-              </div>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#0066FF]/10 text-[#0066FF] dark:bg-[#0066FF]/15 dark:text-[#8ab9ff]">
-                <Plus className="h-4 w-4" />
-              </span>
-            </div>
+<section id="planner-quick-event" hidden={!open} ref={quickFormRef} className="app-glass rounded-[26px] p-4">
+            <h2 className="text-[18px] font-semibold tracking-[-0.03em] text-slate-800 dark:text-white/90">
+              Añadir al calendario
+            </h2>
 
             <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-slate-900/[0.04] p-1 dark:bg-white/[0.05]">
               {QUICK_EVENT_TABS.map((tab) => (
@@ -181,10 +173,6 @@ export function PlannerQuickEventForm({
               </Button>
             </form>
 
-            <p className="mt-3 flex items-start gap-2 rounded-xl bg-[#0066FF]/[0.055] px-2.5 py-2 text-[10px] leading-4 text-slate-500 dark:bg-[#0066FF]/10 dark:text-white/40">
-              <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-[#0066FF] dark:text-[#8ab9ff]" />
-              También puedes pedírselo a la IA: «Tengo un examen de Redes el 15 de noviembre».
-            </p>
           </section>
   );
 }
