@@ -41,12 +41,10 @@ export const LAYOUT_MAX_ROW = 40;
 /** Diseño de fábrica de cada sección. */
 export const DEFAULT_SECTION_PANELS: Record<LayoutSection, Record<string, PanelRect>> = {
   dashboard: {
-    hero: { x: 0, y: 0, w: 8, h: 4 },
-    calendar: { x: 8, y: 0, w: 4, h: 4 },
-    stats: { x: 0, y: 4, w: 12, h: 2 },
-    agenda: { x: 0, y: 6, w: 8, h: 7 },
-    tasks: { x: 8, y: 6, w: 4, h: 7 },
-    quickdock: { x: 0, y: 13, w: 12, h: 2 },
+    hero: { x: 0, y: 0, w: 7, h: 3 },
+    calendar: { x: 7, y: 0, w: 5, h: 3 },
+    agenda: { x: 0, y: 3, w: 7, h: 4 },
+    tasks: { x: 7, y: 3, w: 5, h: 4 },
   },
   documents: {
     editor: { x: 0, y: 0, w: 12, h: 10 },
@@ -107,6 +105,7 @@ function mergePanels(
   if (!stored || typeof stored !== "object") return base;
   const panels: Record<string, PanelRect> = { ...base };
   for (const [id, rect] of Object.entries(stored as Record<string, unknown>)) {
+    if (section === "dashboard" && !Object.hasOwn(base, id)) continue;
     const normalized = normalizeRect(rect);
     if (normalized) panels[id] = normalized;
   }

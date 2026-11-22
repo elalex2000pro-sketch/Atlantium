@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   MessageCircle,
   Settings,
+  Sparkles,
   Target,
   Users,
   type LucideIcon,
@@ -39,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Estudia",
     items: [
       { href: "/library", label: "Biblioteca", icon: BookOpen },
+      { href: "/studio", label: "IA Studio", icon: Sparkles },
       { href: "/academics", label: "Académico", icon: GraduationCap },
       { href: "/documents", label: "Documentos", icon: Files },
       { href: "/office", label: "Academic Office", icon: FilePenLine },

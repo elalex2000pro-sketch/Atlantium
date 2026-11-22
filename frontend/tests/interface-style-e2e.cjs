@@ -40,6 +40,12 @@ async function verifyInterfaceStyle(browser, { WEB, request }) {
     assert.equal(await style('Sólido').getAttribute('aria-pressed'), 'true');
     const sidebar = page.getByRole('complementary', { name: 'Barra lateral' });
     assert.equal(await sidebar.evaluate((element) => getComputedStyle(element).backdropFilter), 'none');
+    const studio = sidebar.getByRole('link', { name: 'IA Studio', exact: true });
+    await studio.waitFor();
+    assert.equal(await studio.getAttribute('href'), '/studio');
+    await sidebar.getByRole('button', { name: 'Ocultar nombres de la barra' }).click();
+    await sidebar.getByRole('button', { name: 'Mostrar nombres de la barra' }).waitFor();
+    assert.equal(await studio.getAttribute('href'), '/studio');
 
     await style('Fondo').click();
     const wallpaper = page.getByRole('combobox', { name: 'Fondo de pantalla', exact: true });
@@ -74,13 +80,24 @@ async function verifyInterfaceStyle(browser, { WEB, request }) {
     await page.setViewportSize({ width: 390, height: 844 });
     const navigation = page.locator('[data-mobile-nav]');
     await navigation.waitFor();
+    await page.locator('header').getByRole('link', { name: 'IA Studio', exact: true }).click();
+    await page.waitForURL((url) => url.pathname === '/studio');
     assert.equal(await navigation.evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(27, 27, 31)');
     await page.evaluate(() => localStorage.setItem('academic-autopilot-theme-v18', 'dark'));
     await page.goto(WEB, { waitUntil: 'domcontentloaded' });
-    const heroAction = page.getByRole('button', { name: 'Crear con IA' });
-    await heroAction.waitFor();
+    const hero = page.locator('[data-dashboard-hero]');
+    await hero.getByRole('link', { name: 'Abrir planificador' }).waitFor();
+    const dateBadge = hero.locator('[class~="backdrop-blur-xl"]');
     await page.locator('html.dark[data-interface-style="solid"]').waitFor();
-    assert.equal(await heroAction.evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(241, 242, 246)');
+    assert.equal(await dateBadge.evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(241, 242, 246)');
+    assert.match(await hero.getByRole('heading').innerText(), /, Prueba\.$/);
+    assert.equal(await hero.getByRole('button', { name: 'Crear con IA' }).count(), 0);
+    const contextPanel = page.getByRole('complementary', { name: 'Panel de contexto' });
+    await contextPanel.getByText('Próxima tarea').waitFor();
+    assert.equal(await contextPanel.getByRole('button', { name: 'Mes anterior' }).count(), 0);
+    await contextPanel.getByRole('button', { name: '5', exact: true }).click();
+    await contextPanel.getByText('5:00', { exact: true }).waitFor();
+    await navigation.waitFor();
   } finally {
     await context.close();
   }
