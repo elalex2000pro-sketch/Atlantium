@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from concurrent.futures import Future
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from chat_test_server import create_test_app
@@ -163,19 +167,77 @@ def test_group_ticks_wait_for_every_recipient(client):
     assert client.get(base + "/messages", headers=alice).json()[0]["status"] == "read"
 
 
+@contextmanager
+def presence_socket(client, token):
+    """Send a normal ASGI disconnect and join the handler without cancelling it."""
+    incoming = asyncio.Queue()
+    accepted = Future()
+    scope = {
+        "type": "websocket",
+        "scheme": "ws",
+        "path": "/api/v1/ws",
+        "query_string": urlencode({"token": token}).encode(),
+        "headers": [],
+        "subprotocols": [],
+    }
+
+    async def run():
+        disconnect_at = None
+
+        async def receive():
+            nonlocal disconnect_at
+            message = await incoming.get()
+            if message["type"] == "websocket.disconnect":
+                disconnect_at = datetime.now(UTC)
+            return message
+
+        async def send(message):
+            if not accepted.done():
+                assert message["type"] == "websocket.accept", message
+                accepted.set_result(None)
+
+        incoming.put_nowait({"type": "websocket.connect"})
+        try:
+            await client.app(scope, receive, send)
+            assert disconnect_at is not None
+        except BaseException as error:
+            if not accepted.done():
+                accepted.set_exception(error)
+            raise
+        return disconnect_at
+
+    # A bound for a stuck handshake or handler, not a delay before reading REST.
+    handler = client.portal.start_task_soon(run)
+    try:
+        accepted.result(timeout=10)
+        yield handler
+    finally:
+        if not handler.done():
+            client.portal.call(incoming.put_nowait, {"type": "websocket.disconnect", "code": 1000})
+        try:
+            handler.result(timeout=10)
+        except TimeoutError:
+            handler.cancel()
+            raise
+
+
 def test_presence_is_real_and_last_seen_persists(client):
     alice, _, _ = account(client, "alice")
     _, b, token = account(client, "bob")
     conversation = direct(client, alice, b["username"])
     url = "/api/v1/chat/conversations/" + conversation + "/presence"
     assert client.get(url, headers=alice).json()[0]["online"] is False
-    with client.websocket_connect("/api/v1/ws?token=" + token):
-        with client.websocket_connect("/api/v1/ws?token=" + token):
+    with presence_socket(client, token) as last_socket:
+        with presence_socket(client, token):
             assert client.get(url, headers=alice).json()[0]["online"] is True
         assert client.get(url, headers=alice).json()[0]["online"] is True
     offline = client.get(url, headers=alice).json()[0]
     assert offline["online"] is False
-    assert datetime.fromisoformat(offline["last_seen_at"])
+    last_seen = datetime.fromisoformat(offline["last_seen_at"])
+    # SQLite returns the stored UTC timestamp without its timezone.
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=UTC)
+    assert last_seen >= last_socket.result()
 
 
 def test_websocket_delivers_message_and_receipt_events(client):
