@@ -6,6 +6,15 @@ const { chromium } = require('playwright-core');
 const API = process.env.SMOKE_API || 'http://127.0.0.1:8000', WEB = process.env.SMOKE_WEB || 'http://localhost:3000';
 const baseline = process.argv.includes('--baseline');
 const output = process.env.REDESIGN_OUTPUT;
+async function verifyStickySidebar(page, sidebar) {
+  const top = (await sidebar.boundingBox()).y;
+  await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+  await page.waitForFunction(() => window.scrollY > 100);
+  const scrolledTop = (await sidebar.boundingBox()).y;
+  assert.ok(Math.abs(scrolledTop - top) <= 1, `Sidebar moved from ${top} to ${scrolledTop} on scroll`);
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 async function main() {
   assert.ok(output, 'Set REDESIGN_OUTPUT outside the repository');
   assert.ok([API, WEB].every(url => ['localhost', '127.0.0.1'].includes(new URL(url).hostname)), 'Only isolated local servers');
@@ -45,11 +54,15 @@ async function main() {
       if (!baseline && width >= 768) {
         const sidebar = page.getByRole('complementary', { name: 'Barra lateral' });
         const toggle = sidebar.getByRole('button', { name: 'Ocultar nombres de la barra' });
+        await toggle.waitFor({ state: 'visible' });
+        await verifyStickySidebar(page, sidebar);
         await toggle.click();
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'true');
         await page.reload({ waitUntil: 'domcontentloaded' });
         await sidebar.getByRole('button', { name: 'Mostrar nombres de la barra', exact: true }).waitFor({ state: 'visible' });
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'true', 'Persists collapse');
+        await page.locator('main h1').first().waitFor({ state: 'visible' });
+        await verifyStickySidebar(page, sidebar);
         const planner = sidebar.getByRole('link', { name: 'Planificador', exact: true });
         await planner.focus();
         await page.getByRole('tooltip', { name: 'Planificador', exact: true }).waitFor();

@@ -21,15 +21,16 @@ export function Sidebar({ reduceMotion, logout, name, email }: { reduceMotion: b
   const [hovered, setHovered] = useState<string | null>(null);
   useEffect(() => setHovered(null), [pathname, sidebar.collapsed]);
   const toggleLabel = sidebar.collapsed ? "Mostrar nombres de la barra" : "Ocultar nombres de la barra";
+  // El material compartido usa position: relative para el efecto de luz.
   return (
     <aside
       aria-label="Barra lateral"
       data-collapsed={sidebar.collapsed}
       data-side={sidebar.side}
       style={{ transitionProperty: "width", transitionDuration: reduced ? "0s" : "var(--duration-ultra)" }}
-      className={cn("app-glass sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 flex-col rounded-3xl text-foreground md:flex", sidebar.side === "right" ? "mr-3" : "ml-3", sidebar.collapsed ? "w-[72px]" : "w-[224px]")}
+      className={cn("app-glass !sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 flex-col rounded-3xl text-foreground md:flex", sidebar.side === "right" ? "mr-3" : "ml-3", sidebar.collapsed ? "w-[72px]" : "w-[224px]")}
     >
-      <div className="app-drag flex h-8 shrink-0 items-center justify-center"><WindowControls compact /></div>
+      <div className={cn("app-drag flex shrink-0 items-center justify-center", sidebar.collapsed ? "h-10 px-1 pt-2 [&>span]:gap-0" : "h-8")}><WindowControls compact /></div>
       <div className={cn("flex shrink-0 items-center gap-2 px-3 pb-2", sidebar.collapsed && "flex-col")}>
         <Link href="/" aria-label="Atlantium · Inicio" className="flex min-w-0 flex-1 items-center gap-2 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
           <Logo className="h-9 w-9" />
