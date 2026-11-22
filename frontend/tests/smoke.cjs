@@ -94,6 +94,8 @@ async function main() {
     for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) await require('./grade-groups-e2e.cjs').verifyGradeGroups(browser, { API, WEB, output, viewport });
     return;
   }
+  await require('./shared-focus-timer-e2e.cjs').verifySharedFocusTimer(browser, { WEB, request });
+  console.log('PASS shared focus timer: panel, Enfoque, one save and one XP award');
   if (process.env.SMOKE_WEB_MODE === 'start') {
     await require('./pwa-e2e.cjs').verifyPwa(browser, { WEB, API, token, user, office, output, pdfFixture });
   }

@@ -13,15 +13,13 @@ import {
   Timer,
 } from "lucide-react";
 
-import { useAuth } from "@/components/auth-provider";
+import { useFocusTimer } from "@/components/focus/focus-timer-provider";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { awardFocusXp } from "@/lib/gamification";
+import { DURATIONS } from "@/lib/focus-timer";
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const FOCUS_SECONDS = 25 * 60;
-const BREAK_SECONDS = 5 * 60;
 const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
 
 function dateKey(date: Date): string {
@@ -64,18 +62,18 @@ function formatDue(value: string | null): string {
  * lenguaje Liquid Glass del resto de la interfaz.
  */
 export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
-  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
-  const [mode, setMode] = useState<"focus" | "break">("focus");
-  const [secondsLeft, setSecondsLeft] = useState(FOCUS_SECONDS);
-  const [running, setRunning] = useState(false);
-  const [sessions, setSessions] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { mode, secondsLeft, running, ready, finishing, completed, sessionsDone, notice, toggle, reset, changeMode } = useFocusTimer();
+  const timerDisabled = !ready || finishing;
+  const total = DURATIONS[mode];
+  const timerNotice = notice ?? (completed
+    ? mode === "focus" ? "Sesión completada. Descansa 5 minutos." : "Descanso terminado."
+    : null);
 
   const load = useCallback(async () => {
     try {
@@ -95,42 +93,6 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
       window.removeEventListener("focus", onFocus);
     };
   }, [load]);
-
-  useEffect(() => {
-    if (!running) return;
-    const interval = window.setInterval(() => {
-      setSecondsLeft((value) => Math.max(0, value - 1));
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [running]);
-
-  const total = mode === "focus" ? FOCUS_SECONDS : BREAK_SECONDS;
-
-  useEffect(() => {
-    if (!running || secondsLeft > 0) return;
-    setRunning(false);
-    void api
-      .logFocusSession(Math.round(total / 60), mode)
-      .then(() => {
-        if (mode === "focus" && user) awardFocusXp(user.id);
-      })
-      .catch(() => undefined);
-    if (mode === "focus") setSessions((value) => value + 1);
-    setNotice(mode === "focus" ? "Sesión completada. Descansa 5 minutos." : "Descanso terminado.");
-  }, [mode, running, secondsLeft, total, user]);
-
-  function switchMode(next: "focus" | "break") {
-    setRunning(false);
-    setMode(next);
-    setSecondsLeft(next === "focus" ? FOCUS_SECONDS : BREAK_SECONDS);
-    setNotice(null);
-  }
-
-  function reset() {
-    setRunning(false);
-    setSecondsLeft(total);
-    setNotice(null);
-  }
 
   const markedDays = useMemo(() => {
     const marked = new Set<string>();
@@ -281,7 +243,8 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
           <div className="flex items-center gap-0.5 rounded-full border border-black/[0.06] bg-white/40 p-0.5 dark:border-white/10 dark:bg-white/[0.05]">
             <button
               type="button"
-              onClick={() => switchMode("focus")}
+              onClick={() => changeMode("focus")}
+              disabled={timerDisabled}
               aria-pressed={mode === "focus"}
               className={cn(
                 "rounded-full px-2 py-0.5 text-[9.5px] font-semibold transition-colors",
@@ -290,11 +253,12 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
                   : "text-slate-500 dark:text-white/40",
               )}
             >
-              25
+              {DURATIONS.focus / 60}
             </button>
             <button
               type="button"
-              onClick={() => switchMode("break")}
+              onClick={() => changeMode("break")}
+              disabled={timerDisabled}
               aria-pressed={mode === "break"}
               className={cn(
                 "rounded-full px-2 py-0.5 text-[9.5px] font-semibold transition-colors",
@@ -303,7 +267,7 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
                   : "text-slate-500 dark:text-white/40",
               )}
             >
-              5
+              {DURATIONS.break / 60}
             </button>
           </div>
         </div>
@@ -321,19 +285,18 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
         <div className="mt-2.5 flex gap-1.5">
           <Button
             size="sm"
-            onClick={() => {
-              setRunning((value) => !value);
-              setNotice(null);
-            }}
+            onClick={toggle}
+            disabled={timerDisabled}
             className="h-8 flex-1 text-[11px]"
           >
             {running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            {running ? "Pausar" : "Empezar"}
+            {running ? "Pausar" : secondsLeft > 0 && secondsLeft < total ? "Continuar" : "Empezar"}
           </Button>
           <Button
             size="sm"
             variant="secondary"
             onClick={reset}
+            disabled={timerDisabled}
             aria-label="Reiniciar temporizador"
             title="Reiniciar"
             className="h-8 w-8 p-0"
@@ -342,14 +305,14 @@ export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
           </Button>
         </div>
 
-        {sessions > 0 ? (
+        {sessionsDone > 0 ? (
           <p className="mt-1.5 text-center text-[9.5px] text-slate-500 dark:text-white/35">
-            {sessions} {sessions === 1 ? "sesión completada" : "sesiones completadas"}
+            {sessionsDone} {sessionsDone === 1 ? "sesión completada" : "sesiones completadas"}
           </p>
         ) : null}
-        {notice ? (
+        {timerNotice ? (
           <p className="mt-1.5 text-center text-[9.5px] font-medium text-emerald-600 dark:text-emerald-300">
-            {notice}
+            {timerNotice}
           </p>
         ) : null}
       </section>
