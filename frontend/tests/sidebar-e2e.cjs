@@ -59,7 +59,8 @@ async function main() {
         await names.click();
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'false');
         await page.getByRole('button', { name: 'Derecha', exact: true }).click();
-        await page.reload({ waitUntil: 'networkidle' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await names.waitFor({ state: 'visible' });
         assert.equal(await sidebar.getAttribute('data-side'), 'right');
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'false');
         await sidebar.getByRole('link', { name: 'Chat', exact: true }).click();
