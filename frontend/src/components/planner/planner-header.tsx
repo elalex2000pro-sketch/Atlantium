@@ -4,25 +4,25 @@ import type * as React from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { motion } from "framer-motion";
 import { pageItem } from "@/components/page-animated-wrapper";
-import { AlertCircle, CalendarClock, CalendarDays, CalendarRange, CheckCircle2, Plus, Sparkles, X } from "lucide-react";
+import { AlertCircle, CalendarClock, CalendarDays, CheckCircle2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type Notice } from "@/lib/planner";
 
 type Props = {
   monthPendingExamCount: number;
-  monthPending: number;
   goToday: () => void;
-  openQuickAdd: (type: "exam" | "task" | "important_date") => void;
+  quickAddOpen: boolean;
+  toggleQuickAdd: () => void;
   notice: Notice | null;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
 };
 
 export function PlannerHeader({
   monthPendingExamCount,
-  monthPending,
   goToday,
-  openQuickAdd,
+  quickAddOpen,
+  toggleQuickAdd,
   notice,
   setNotice,
 }: Props) {
@@ -30,16 +30,9 @@ export function PlannerHeader({
 <>
 <motion.header variants={pageItem} className="flex flex-wrap items-end justify-between gap-5">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/35">
-            <CalendarRange className="h-3.5 w-3.5" strokeWidth={1.9} />
+          <h1 className="text-[28px] font-light leading-[1.05] tracking-[-0.035em] text-slate-800 dark:text-white/90 sm:text-[33px]">
             Planificador
-          </p>
-          <h1 className="mt-2 text-[28px] font-light leading-[1.05] tracking-[-0.035em] text-slate-800 dark:text-white/90 sm:text-[33px]">
-            Tu calendario, <span className="font-semibold">en orden.</span>
           </h1>
-          <p className="mt-2 max-w-xl text-[12px] leading-5 text-slate-500 dark:text-white/45">
-            Calendario, horario y entregas en una sola vista. Toca un día para ver su detalle.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -51,16 +44,12 @@ export function PlannerHeader({
                 : `${monthPendingExamCount} exámenes pendientes`}
             </span>
           )}
-          <span className="inline-flex h-9 items-center gap-2 rounded-full border border-[#AF52DE]/20 bg-white/35 px-3.5 text-[11.5px] font-medium text-[#8e3fb8] shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-md dark:border-[#AF52DE]/20 dark:bg-white/[0.045] dark:text-[#d8b4fe] dark:shadow-none">
-            <Sparkles className="h-3.5 w-3.5 text-[#AF52DE]" strokeWidth={1.8} />
-            {monthPending} tarea{monthPending === 1 ? "" : "s"} pendiente
-            {monthPending === 1 ? "" : "s"} este mes
-          </span>
           <Button variant="outline" size="sm" onClick={goToday}>
             <CalendarDays className="h-4 w-4" /> Hoy
           </Button>
-          <Button size="sm" onClick={() => openQuickAdd("exam")} aria-label="Añadir evento al calendario">
-            <Plus className="h-4 w-4" /> Nuevo Evento
+          <Button size="sm" onClick={toggleQuickAdd} aria-expanded={quickAddOpen} aria-controls="planner-quick-event" aria-label={quickAddOpen ? "Cerrar formulario de evento" : "Añadir evento al calendario"}>
+            {quickAddOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {quickAddOpen ? "Cerrar formulario" : "Nuevo Evento"}
           </Button>
         </div>
       </motion.header>

@@ -10,6 +10,7 @@ import type { Course, Grade, ImportantDate, Task } from "@/lib/types";
 import { MONTHS, longDate, parseKey } from "@/lib/planner";
 
 type Props = {
+  showSelectedDay: boolean;
   selectedDay: string;
   setViewMode: Dispatch<SetStateAction<"month" | "week" | "day">>;
   selectedExams: Grade[];
@@ -25,6 +26,7 @@ type Props = {
 };
 
 export function PlannerOverview({
+  showSelectedDay,
   selectedDay,
   setViewMode,
   selectedExams,
@@ -40,7 +42,8 @@ export function PlannerOverview({
 }: Props) {
   return (
 <>
-<section className="app-glass-soft rounded-[26px] p-4">
+          {showSelectedDay && (
+          <section className="app-glass-soft rounded-[26px] p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/30">
@@ -69,22 +72,20 @@ export function PlannerOverview({
               </div>
             </div>
           </section>
+          )}
 
           <section className="app-glass-soft rounded-[26px] p-4">
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-600/80 dark:text-amber-300/70">
-                  Fechas importantes
-                </p>
-                <h3 className="mt-1 text-[14px] font-semibold text-slate-800 dark:text-white/90">No se te pasen</h3>
-              </div>
+              <h3 className="text-[14px] font-semibold text-slate-800 dark:text-white/90">
+                Fechas importantes
+              </h3>
               <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                 {importantDates.length}
               </span>
             </div>
             {importantDates.length === 0 ? (
               <p className="mt-3 rounded-xl bg-slate-900/[0.025] px-2.5 py-3 text-[10.5px] leading-4 text-slate-400 dark:bg-white/[0.025] dark:text-white/30">
-                Aún no hay fechas señaladas. Añade una desde el formulario de arriba.
+                Aún no hay fechas señaladas. Añade una con «Nuevo Evento».
               </p>
             ) : (
               <ul className="mt-2.5 space-y-1">
@@ -120,14 +121,9 @@ export function PlannerOverview({
               columna principal del calendario mensual. */}
           <section className="app-glass-soft rounded-[26px] p-4">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d92b22]/80 dark:text-[#ff8a80]/80">
-                  Próximos exámenes
-                </p>
-                <h3 className="mt-1 text-[14px] font-semibold text-slate-800 dark:text-white/90">
-                  Lo que viene
-                </h3>
-              </div>
+              <h3 className="text-[14px] font-semibold text-slate-800 dark:text-white/90">
+                Próximos exámenes
+              </h3>
               <span className="rounded-full bg-[#FF3B30]/10 px-2 py-1 text-[10px] font-semibold text-[#d92b22] dark:bg-[#FF3B30]/15 dark:text-[#ff8a80]">
                 {upcomingExams.length}
               </span>
@@ -135,7 +131,7 @@ export function PlannerOverview({
 
             {upcomingExams.length === 0 ? (
               <p className="mt-3 rounded-xl bg-slate-900/[0.025] px-2.5 py-3 text-[10.5px] leading-4 text-slate-400 dark:bg-white/[0.025] dark:text-white/30">
-                No hay exámenes próximos. Añade uno desde el formulario de arriba o desde Académico.
+                No hay exámenes próximos. Añade uno con «Nuevo Evento» o desde Académico.
               </p>
             ) : (
               <ul className="mt-2.5 space-y-1">

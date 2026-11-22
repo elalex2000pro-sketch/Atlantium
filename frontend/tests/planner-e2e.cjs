@@ -77,16 +77,80 @@ async function main() {
     const context=await browser.newContext({viewport,serviceWorkers:'block'});
     await context.addInitScript(({token,user})=>{localStorage.setItem('autopilot_token',token);localStorage.setItem('autopilot_user',JSON.stringify(user));localStorage.setItem('hasCompletedOnboarding_v1','true');},{token,user});
     const page=await context.newPage();const errors=[];
-    page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.type() !== 'error') return;
+      const text = message.text();
+      const expectedSaveError = message.location().url.endsWith('/api/v1/important-dates') && text.includes('422');
+      // Full reloads can cancel Next.js prefetches from the shared navigation.
+      const canceledPrefetch = text.startsWith('Failed to fetch RSC payload for ' + WEB + '/') &&
+        text.includes('Falling back to browser navigation') &&
+        (text.includes('TypeError: network error') || text.includes('TypeError: Failed to fetch')) &&
+        !['planner', 'calendar', 'schedule'].some(route => text.startsWith('Failed to fetch RSC payload for ' + WEB + '/' + route));
+      if (!expectedSaveError && !canceledPrefetch) errors.push(text);
+    });
     const day=new Date();const key=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const today=key(day);const tomorrowDate=new Date(day);tomorrowDate.setDate(day.getDate()+1);const tomorrow=key(tomorrowDate);
-    async function go(route){await page.goto(WEB+route,{waitUntil:'domcontentloaded'});await page.locator('#quick-event-title').waitFor();await page.waitForLoadState('networkidle');await page.getByRole('button',{name:'Nuevo Evento',exact:false}).count();}
+    const addEventButton = page.getByRole('button', { name: 'Añadir evento al calendario', exact: true });
+    const quickTitle = page.locator('#quick-event-title');
+    async function go(route) {
+      await page.goto(WEB + route, { waitUntil: 'domcontentloaded' });
+      await addEventButton.waitFor();
+    }
+    async function openAddEvent() {
+      assert.equal(await addEventButton.getAttribute('aria-expanded'), 'false');
+      assert.equal(await quickTitle.isVisible(), false);
+      await addEventButton.click();
+      await quickTitle.waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'quick-event-title');
+    }
     async function check(name,fn){try{await fn();reports.push({viewport:viewport.width,name,status:'passed'});console.log('PASS',viewport.width,name)}catch(error){reports.push({viewport:viewport.width,name,status:'pending',reason:error.message});console.log('PENDING',viewport.width,name,error.message.split('\n')[0]);await page.screenshot({path:path.join(output,`${viewport.width}-${reports.length}.png`),fullPage:true}).catch(()=>{});}finally{await fs.writeFile(path.join(output,'report.json'),JSON.stringify(reports,null,2));}}
     try {
-      await check('P1 rutas, aviso y acceso rápido',async()=>{await go('/calendar');await page.getByRole('button',{name:'Añadir evento al calendario',exact:true}).click();assert.equal(await page.locator('#quick-event-title').evaluate(e=>e===document.activeElement),true);await go('/planner');});
+      await check('P1 rutas y formulario plegado con foco al abrir', async () => {
+        await go('/calendar');
+        await openAddEvent();
+        await page.getByRole('button', { name: 'Cerrar formulario de evento', exact: true }).click();
+        await quickTitle.waitFor({ state: 'hidden' });
+        await go('/planner');
+      });
+      await check('El alta conserva los campos tras un error', async () => {
+        await go('/planner');
+        await openAddEvent();
+        await page.getByRole('button', { name: 'Fecha importante', exact: true }).click();
+        await quickTitle.fill('Fecha sin guardar');
+        await page.locator('#quick-event-date').fill(tomorrow);
+        await page.locator('#quick-event-notes').fill('Borrador de notas');
+        const endpoint = '**/api/v1/important-dates';
+        const rejectSave = route => route.request().method() === 'POST'
+          ? route.fulfill({ status: 422, json: { detail: 'Error de guardado de prueba' } })
+          : route.continue();
+        await page.route(endpoint, rejectSave);
+        try {
+          await page.getByRole('button', { name: 'Guardar fecha', exact: true }).click();
+          await page.getByText('Error de guardado de prueba', { exact: true }).waitFor();
+          assert.equal(await quickTitle.isVisible(), true);
+          assert.equal(await quickTitle.inputValue(), 'Fecha sin guardar');
+          assert.equal(await page.locator('#quick-event-date').inputValue(), tomorrow);
+          assert.equal(await page.locator('#quick-event-notes').inputValue(), 'Borrador de notas');
+          assert.equal(await page.getByRole('button', { name: 'Fecha importante', exact: true }).getAttribute('aria-pressed'), 'true');
+        } finally {
+          await page.unroute(endpoint, rejectSave);
+        }
+      });
       for(const [tab,title,submit,endpoint] of [['Tarea','Tarea de prueba','Añadir tarea','/tasks'],['Examen','Examen de prueba','Añadir examen','/grades'],['Fecha importante','Fecha de prueba','Guardar fecha','/important-dates']]) {
-        await check('P3 alta y persistencia '+tab,async()=>{await go('/planner');const section=page.locator('section').filter({has:page.locator('#quick-event-title')});await section.getByRole('button',{name:tab,exact:true}).click();await page.locator('#quick-event-title').fill(title);await page.locator('#quick-event-date').fill(today);if(tab!=='Fecha importante')await page.locator('#quick-event-course').selectOption(course.id);await section.getByRole('button',{name:submit,exact:true}).click();await until(async()=>(await request(endpoint,token)).some(x=>x.title===title),'persist '+tab);await page.getByLabel('Cerrar aviso',{exact:true}).click();await page.reload();await page.getByRole('button',{name:'Día',exact:true}).click();await page.getByText(title,{exact:true}).first().waitFor();});
+        await check('P3 alta y persistencia '+tab,async()=>{await go('/planner');await openAddEvent();const section=page.locator('#planner-quick-event');await section.getByRole('button',{name:tab,exact:true}).click();await page.locator('#quick-event-title').fill(title);await page.locator('#quick-event-date').fill(today);if(tab!=='Fecha importante')await page.locator('#quick-event-course').selectOption(course.id);await section.getByRole('button',{name:submit,exact:true}).click();await until(async()=>(await request(endpoint,token)).some(x=>x.title===title),'persist '+tab);await page.getByLabel('Cerrar aviso',{exact:true}).click();await page.reload();await page.getByRole('button',{name:'Día',exact:true}).click();await page.getByText(title,{exact:true}).first().waitFor();});
       }
-      await check('P2 resumen y agenda seleccionada',async()=>{await go('/planner');await page.getByRole('button',{name:'Ver agenda',exact:true}).click();await page.getByRole('button',{name:'Día',exact:true}).waitFor();await page.getByText('Examen de prueba',{exact:true}).first().waitFor();});
+      await check('P2 resumen y agenda seleccionada', async () => {
+        await go('/planner');
+        const agenda = page.getByRole('button', { name: 'Ver agenda', exact: true });
+        await agenda.waitFor();
+        await page.getByRole('button', { name: 'Semana', exact: true }).click();
+        await agenda.waitFor();
+        await page.getByText(/tareas? pendientes? en /).waitFor();
+        await agenda.click();
+        await agenda.waitFor({ state: 'hidden' });
+        await page.getByText(/tareas? pendientes? en /).waitFor();
+        await page.getByText('Examen de prueba', { exact: true }).first().waitFor();
+      });
       await check('P4 editar y mover tarea',async()=>{await go('/planner');await page.getByRole('button',{name:'Día',exact:true}).click();await page.getByRole('button',{name:'Editar Tarea de prueba',exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Nombre de la tarea',{exact:true}).fill('Tarea editada');await dialog.getByLabel('Fecha de entrega',{exact:true}).fill(tomorrow);await dialog.getByRole('button',{name:'Guardar cambios',exact:true}).click();await until(async()=>(await request('/tasks',token)).some(x=>x.title==='Tarea editada'&&x.due_at.startsWith(tomorrow)),'edited task');await page.reload();assert.equal(await page.getByRole('button',{name:'Editar Tarea editada',exact:true}).count(),0);});
       await check('P5 crear horario local y recargar',async()=>{await go('/schedule');await page.locator('#planner-class-course').selectOption('');await page.locator('#planner-class-title').fill('Franja local de prueba');const form=page.locator('form').filter({has:page.locator('#planner-class-title')});await form.getByRole('button',{name:'Añadir Asignatura al Horario',exact:true}).click();await page.getByText('Franja local de prueba',{exact:true}).first().waitFor();await page.reload();await page.getByText('Franja local de prueba',{exact:true}).first().waitFor();});
       await check('P6-P8 periodo, mes, semana, día y Hoy',async()=>{await go('/planner');for(const view of ['Semana','Día','Mes']){await page.getByRole('button',{name:view,exact:true}).click();assert.equal(await page.getByRole('button',{name:view,exact:true}).getAttribute('aria-pressed'),'true');await page.getByLabel('Periodo siguiente',{exact:true}).click();await page.getByLabel('Periodo anterior',{exact:true}).click();await page.getByRole('button',{name:'Hoy',exact:true}).first().click();}await page.getByText('Fecha de prueba',{exact:true}).first().waitFor();});
