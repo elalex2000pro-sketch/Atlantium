@@ -102,7 +102,7 @@ export default function ClassesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6 p-6 2xl:max-w-none">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Clases compartidas</h1>
         <p className="text-sm text-muted-foreground">
@@ -117,7 +117,7 @@ export default function ClassesPage() {
         </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid max-w-6xl gap-6 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -196,7 +196,7 @@ export default function ClassesPage() {
           </p>
         )}
         {!loading && classes.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4">
             {classes.map((item) => (
               <ClassCard key={item.id} item={item} />
             ))}
@@ -214,7 +214,7 @@ const ClassCard = memo(function ClassCard({ item }: { item: SharedClass }) {
       className="rounded-lg border border-border/60 bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/40"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="font-medium">{item.name}</p>
+        <p className="min-w-0 break-words font-medium">{item.name}</p>
         {item.my_role === "owner" && (
           <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
             Propietario

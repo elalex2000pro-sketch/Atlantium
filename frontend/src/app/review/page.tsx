@@ -152,7 +152,7 @@ export default function ReviewPage() {
 
   if (!study) {
     return (
-      <div className="mx-auto max-w-7xl space-y-4 pb-10">
+      <div className="space-y-4 pb-10">
         <header className="app-glass flex flex-wrap items-end justify-between gap-3 rounded-2xl p-4">
           <div className="min-w-0">
             <h1 className="mb-2 text-2xl font-semibold tracking-tight">Repaso</h1>
@@ -180,7 +180,7 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 pb-10">
+    <div className="mx-auto max-w-6xl space-y-4 pb-10 2xl:max-w-none">
       <Button variant="ghost" onClick={() => { setStudy(null); setNotice(null); }}>
         <ArrowLeft className="h-4 w-4" /> Volver al cuaderno
       </Button>
@@ -771,13 +771,13 @@ function DecksView({
         </div>
 
         {loading ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
             {[0, 1, 2].map((item) => (
               <div key={item} className="h-40 animate-pulse rounded-3xl border border-slate-300/40 bg-slate-200/45 dark:border-white/5 dark:bg-white/[0.03]" />
             ))}
           </div>
         ) : (
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
             {decks.map((deck) => {
               const {
                 due: deckDue,

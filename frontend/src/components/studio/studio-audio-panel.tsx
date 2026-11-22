@@ -69,7 +69,7 @@ export function StudioAudioPanel({
 }: Props) {
   return (
 <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(var(--mobile-nav-offset)+1.5rem)] pt-2 sm:px-5 lg:pb-8">
-          <div className="mx-auto max-w-5xl space-y-3">
+          <div className="mx-auto max-w-5xl space-y-3 2xl:max-w-content">
             <section className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
               <div className="app-glass rounded-3xl p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2">

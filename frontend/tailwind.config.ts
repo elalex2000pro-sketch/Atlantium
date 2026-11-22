@@ -114,6 +114,7 @@ const config: Config = {
       screens: { "2xl": "1180px" },
     },
     extend: {
+      maxWidth: { content: "104rem" },
       fontFamily: { sans: ["var(--font-body)"], display: ["var(--font-display)"], mono: ["var(--font-mono)"] },
       colors: {
         "literal-111114": "rgb(var(--literal-111114) / <alpha-value>)",

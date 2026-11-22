@@ -85,7 +85,7 @@ export function StudioDocumentPanel({
 }: Props) {
   return (
 <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(var(--mobile-nav-offset)+1.5rem)] pt-2 sm:px-5 lg:overflow-hidden lg:pb-6">
-          <div className="mx-auto grid max-w-6xl gap-3 lg:h-full lg:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="mx-auto grid max-w-6xl gap-3 lg:h-full lg:grid-cols-[300px_minmax(0,1fr)] 2xl:max-w-content">
             <aside className="space-y-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               <div className="app-glass rounded-3xl p-3.5">
                 <div className="flex items-center justify-between gap-2">
