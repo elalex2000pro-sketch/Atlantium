@@ -169,9 +169,6 @@ export default function FocusPage() {
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
             <TimerReset className="h-6 w-6 text-indigo-600" /> Modo Enfoque
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Pomodoro, rachas y una sola cosa a la vez.
-          </p>
         </div>
         <Button variant="outline" size="sm" onClick={toggleFullscreen}>
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -276,21 +273,18 @@ export default function FocusPage() {
               <Bell className="h-4 w-4" />
             </Button>
           </div>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Cada sesión completada se suma a tus estadísticas y racha diaria.
-            {sessionsDone > 0 ? (
-              <>
-                {" "}
-                Hoy llevas <AnimatedCounter value={sessionsDone} /> en esta sesión.
-              </>
-            ) : (
-              ""
-            )}
-          </p>
+          {sessionsDone > 0 && (
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              Sesiones de enfoque en esta visita: <AnimatedCounter value={sessionsDone} />
+            </p>
+          )}
 
-          <div className="mt-5 border-t border-slate-300/40 pt-4 dark:border-white/10">
+          <details className="mt-5 border-t border-slate-300/40 pt-4 dark:border-white/10">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+              Ambiente de estudio
+            </summary>
             <AmbientPlayer />
-          </div>
+          </details>
         </div>
 
         <div className="space-y-3">
@@ -324,13 +318,11 @@ export default function FocusPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-300/45 bg-slate-100/65 p-6 shadow-lg shadow-slate-900/5 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-            Últimos 7 días
-          </h2>
-          <span className="text-xs text-muted-foreground">minutos de enfoque</span>
-        </div>
+      <details className="rounded-3xl border border-slate-300/45 bg-slate-100/65 p-6 shadow-lg shadow-slate-900/5 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]">
+        <summary className="cursor-pointer text-sm font-bold uppercase tracking-wide text-slate-500">
+          Últimos 7 días
+        </summary>
+        <p className="text-right text-xs text-muted-foreground">minutos de enfoque</p>
         <div className="mt-4 flex h-36 items-end gap-2">
           {(stats?.days ?? []).map((day) => {
             const height = Math.max(4, Math.round((day.minutes / maxDay) * 100));
@@ -356,7 +348,7 @@ export default function FocusPage() {
             </div>
           )}
         </div>
-      </section>
+      </details>
 
       <DailyFocus agenda={agenda} loading={loading} onComplete={handleComplete} onReplan={load} />
     </div>

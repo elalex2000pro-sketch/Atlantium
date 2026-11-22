@@ -128,16 +128,13 @@ export function AmbientPlayer() {
   const active = PRESETS.find((item) => item.id === preset) ?? PRESETS[0];
 
   return (
-    <div className="space-y-3">
+    <div className="mt-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500 dark:bg-indigo-400/10 dark:text-indigo-300">
             <active.icon className="h-4 w-4" />
           </span>
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/30">
-              Ambiente de estudio
-            </p>
             <p className="truncate text-[11.5px] font-medium text-slate-600 dark:text-white/55">
               {playing ? `Sonando · ${active.label}` : "Elige un sonido para concentrarte"}
             </p>
