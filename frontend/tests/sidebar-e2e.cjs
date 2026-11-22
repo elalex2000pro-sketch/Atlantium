@@ -48,7 +48,6 @@ async function main() {
       page.on('pageerror', e => errors.push(e.message));
       await page.goto(WEB, { waitUntil: 'domcontentloaded' });
       await page.locator('main h1').first().waitFor({ state: 'visible' });
-      await page.waitForTimeout(1200);
       await page.screenshot({ path: path.join(output, `${width}-${theme}-expanded.png`), animations: 'disabled' });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No page overflow');
       if (!baseline && width >= 768) {
@@ -61,18 +60,45 @@ async function main() {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await sidebar.getByRole('button', { name: 'Mostrar nombres de la barra', exact: true }).waitFor({ state: 'visible' });
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'true', 'Persists collapse');
-        await page.locator('main h1').first().waitFor({ state: 'visible' });
-        await verifyStickySidebar(page, sidebar);
         const planner = sidebar.getByRole('link', { name: 'Planificador', exact: true });
+        await planner.scrollIntoViewIfNeeded();
         await planner.focus();
-        await page.getByRole('tooltip', { name: 'Planificador', exact: true }).waitFor();
+        try {
+          await page.getByRole('tooltip', { name: 'Planificador', exact: true }).waitFor({ state: 'visible' });
+        } catch (error) {
+          if (error.name === 'TimeoutError') {
+            const screenshot = path.join(output, `${width}-${theme}-tooltip-timeout.png`);
+            const layout = await page.evaluate(() => {
+              const sidebar = document.querySelector('aside[aria-label="Barra lateral"]');
+              const planner = sidebar?.querySelector('a[aria-label="Planificador"]');
+              const rect = planner?.getBoundingClientRect();
+              const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+              return {
+                sidebar: sidebar?.getBoundingClientRect().toJSON(),
+                planner: rect?.toJSON(),
+                collapsed: sidebar?.getAttribute('data-collapsed'),
+                focused: document.activeElement === planner,
+                plannerAtHitPoint: Boolean(hit && planner.contains(hit)),
+                hit: hit?.tagName,
+                scrollY: window.scrollY,
+                tooltipId: planner?.getAttribute('aria-describedby'),
+              };
+            }).catch(diagnosticError => ({ error: diagnosticError.message }));
+            console.error('Planificador tooltip layout:', JSON.stringify(layout));
+            await page.screenshot({ path: screenshot, timeout: 5000 })
+              .then(() => console.error('Planificador tooltip screenshot:', screenshot))
+              .catch(diagnosticError => console.error('Planificador tooltip screenshot failed:', diagnosticError.message));
+          }
+          throw error;
+        }
         await page.keyboard.press('Escape');
         await page.getByRole('tooltip').waitFor({ state: 'hidden' });
         await page.keyboard.press('Enter');
         await page.waitForURL('**/planner');
         await page.locator('main h1').first().waitFor();
-        await page.waitForTimeout(600);
         assert.equal(await planner.getAttribute('aria-current'), 'page');
+        // Scrolling dismisses the tooltip. Check the compact rail after the keyboard flow.
+        await verifyStickySidebar(page, sidebar);
         await page.screenshot({ path: path.join(output, `${width}-${theme}-compact.png`), animations: 'disabled' });
         await sidebar.getByRole('link', { name: 'Ajustes', exact: true }).click();
         const names = page.getByRole('switch', { name: 'Mostrar nombres en la barra', exact: true });
