@@ -31,7 +31,6 @@ import {
 import { ExamDialog, type ExamDialogMode } from "@/components/exam-dialog";
 import { useRealtime } from "@/components/realtime-provider";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -227,6 +226,8 @@ export function AcademicsView() {
   const [gradeNotes, setGradeNotes] = useState("");
   const [gradeIsExam, setGradeIsExam] = useState(false);
   const [savingGrade, setSavingGrade] = useState(false);
+  const [gradeFormOpen, setGradeFormOpen] = useState<boolean | null>(null);
+  const [gradeError, setGradeError] = useState<string | null>(null);
   const [deletingGradeId, setDeletingGradeId] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -522,6 +523,24 @@ export function AcademicsView() {
   }, [grades, selectedCourse]);
 
   const selectedSummary = selectedCourse ? summaryByCourse.get(selectedCourse.id) : undefined;
+  const showGradeForm = gradeFormOpen ?? selectedGrades.length === 0;
+
+  const resetGradeDraft = useCallback(() => {
+    setGradeTitle("");
+    setGradeScore("");
+    setGradeMax("10");
+    setGradeWeight("");
+    setGradeDate("");
+    setGradeNotes("");
+    setGradeClassification({ trimester: null, unit: "" });
+    setGradeIsExam(false);
+  }, []);
+
+  useEffect(() => {
+    setGradeFormOpen(null);
+    setGradeError(null);
+    resetGradeDraft();
+  }, [selectedCourseId, resetGradeDraft]);
 
   async function createCourse(event: React.FormEvent) {
     event.preventDefault();
@@ -600,17 +619,15 @@ export function AcademicsView() {
     const max = toNumber(gradeMax) ?? 10;
     const score = toNumber(gradeScore);
     if (score !== null && score > max) {
-      setNotice({ tone: "error", text: "La nota no puede superar la puntuación máxima." });
+      setGradeError("La nota no puede superar la puntuación máxima.");
       return;
     }
     if (gradeIsExam && !gradeDate) {
-      setNotice({
-        tone: "error",
-        text: "Indica la fecha del examen para verlo en el calendario del planificador.",
-      });
+      setGradeError("Indica la fecha del examen para verlo en el calendario del planificador.");
       return;
     }
     setSavingGrade(true);
+    setGradeError(null);
     setNotice(null);
     try {
       await api.createGrade({
@@ -625,14 +642,7 @@ export function AcademicsView() {
         trimester: gradeClassification.trimester,
         unit: gradeClassification.unit.trim() || null,
       });
-      setGradeTitle("");
-      setGradeScore("");
-      setGradeMax("10");
-      setGradeWeight("");
-      setGradeDate("");
-      setGradeNotes("");
-      setGradeClassification({ trimester: null, unit: "" });
-      setGradeIsExam(false);
+      resetGradeDraft();
       notifyGradeChange();
       await load(true);
       setNotice({
@@ -642,7 +652,7 @@ export function AcademicsView() {
           : "Nota registrada y media recalculada.",
       });
     } catch (error) {
-      setNotice({ tone: "error", text: errorMessage(error) });
+      setGradeError(errorMessage(error));
     } finally {
       setSavingGrade(false);
     }
@@ -706,9 +716,6 @@ export function AcademicsView() {
             <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.04em] text-slate-900 dark:text-white/95 sm:text-[30px]">
               Asignaturas y notas
             </h1>
-            <p className="mt-1 max-w-xl text-[12px] leading-5 text-slate-500 dark:text-white/40">
-              El profesorado, las evaluaciones y la media ponderada de cada asignatura en un solo lugar.
-            </p>
           </div>
           <Button onClick={() => setShowCourseForm(true)} className="h-9 rounded-full px-4">
             <Plus className="h-4 w-4" /> Nueva asignatura
@@ -807,7 +814,7 @@ export function AcademicsView() {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-300/40 bg-slate-100/50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
           <p className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-white/35">
             <GripVertical className="h-3.5 w-3.5 shrink-0" />
-            Arrastra una tarjeta o usa las flechas para crear tu propio orden.
+            Arrastra las tarjetas o usa las flechas del orden manual.
           </p>
           <span className="rounded-full bg-slate-900/[0.05] px-2 py-0.5 text-[9.5px] font-medium text-slate-500 dark:bg-white/[0.07] dark:text-white/40">
             {sortMode === "manual" ? "Orden manual activo" : "Se guarda en este dispositivo"}
@@ -938,15 +945,6 @@ export function AcademicsView() {
                       {count} {count === 1 ? "evaluación" : "evaluaciones"}
                       <ChevronRight className="h-3 w-3 opacity-50 transition-transform group-hover:translate-x-0.5" />
                     </span>
-                  </div>
-                  <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-slate-900/[0.07] dark:bg-white/10">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-500"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, average ?? 0))}%`,
-                        backgroundColor: color,
-                      }}
-                    />
                   </div>
                   </button>
                   {dragOverCourseId === course.id && (
@@ -1179,23 +1177,24 @@ export function AcademicsView() {
               </aside>
 
               <div className="min-w-0 space-y-4">
-                <form
+                <Button
+                  type="button"
+                  variant="secondary"
+                  aria-expanded={showGradeForm}
+                  aria-controls="academic-add-grade"
+                  disabled={savingGrade}
+                  onClick={() => setGradeFormOpen(!showGradeForm)}
+                >
+                  {showGradeForm ? "Plegar formulario" : "Añadir nota"}
+                </Button>
+                <div id="academic-add-grade" hidden={!showGradeForm}>
+                {showGradeForm && <form
                   onSubmit={addGrade}
                   className="rounded-3xl border border-slate-300/40 bg-slate-100/60 p-4 dark:border-white/10 dark:bg-white/[0.04]"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-white/30">
-                        Nueva evaluación
-                      </p>
                       <h3 className="mt-0.5 text-[14px] font-semibold text-slate-800 dark:text-white/85">
                         Añadir nota
                       </h3>
-                    </div>
-                    <Badge variant="secondary" className="rounded-full text-[9.5px]">
-                      Media automática
-                    </Badge>
-                  </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
                     <label className="block sm:col-span-2">
                       <span className="text-[10px] font-medium text-slate-500 dark:text-white/40">
@@ -1205,6 +1204,7 @@ export function AcademicsView() {
                         value={gradeTitle}
                         onChange={(event) => setGradeTitle(event.target.value)}
                         placeholder="Parcial 1"
+                        autoFocus
                         required
                         maxLength={300}
                         className="mt-1"
@@ -1290,18 +1290,15 @@ export function AcademicsView() {
                       />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <p className="text-[10px] text-slate-400 dark:text-white/30">
-                      {gradeIsExam
-                        ? "Se guardará como examen y aparecerá en el calendario del planificador."
-                        : "La media se recalcula con el peso de cada evaluación."}
-                    </p>
+                  {gradeError && <p role="alert" className="mt-3 text-xs text-destructive">{gradeError}</p>}
+                  <div className="mt-3 flex justify-end">
                     <Button type="submit" size="sm" disabled={!gradeTitle.trim() || savingGrade}>
                       {savingGrade ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                       {gradeIsExam ? "Registrar examen" : "Registrar"}
                     </Button>
                   </div>
-                </form>
+                </form>}
+                </div>
 
                 <GradeGroups grades={selectedGrades} terms={selectedSummary?.terms} onSaved={() => { notifyGradeChange(); void load(true); }} onEditExam={(grade) => setExamDialog({ mode: "edit", exam: grade })} onDelete={removeGrade} />
               </div>

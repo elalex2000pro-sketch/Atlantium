@@ -40,7 +40,11 @@ async function verifyGradeGroups(browser,{API,WEB,output,viewport}) {
       await dialog.getByRole('button',{name:'Guardar cambios',exact:true}).click();
       await dialog.waitFor({state:'hidden'});
       const all=await api('/grades');assert.equal(all.find(g=>g.id===exam.id).trimester,3);assert.equal(all.find(g=>g.id===old.id).score,8);
+      const addGrade=page.getByRole('button',{name:'Añadir nota',exact:true});
+      assert.equal(await addGrade.getAttribute('aria-expanded'),'false');
+      await addGrade.press('Enter');
       const form=page.locator('form').filter({has:page.getByRole('button',{name:'Registrar',exact:true})});
+      await page.waitForFunction(() => document.activeElement?.getAttribute('placeholder') === 'Parcial 1');
       await form.getByPlaceholder('Parcial 1').fill('Nota nueva');
       await form.getByLabel('Nota',{exact:true}).fill('9');
       await form.getByLabel('Trimestre',{exact:true}).selectOption('1');
