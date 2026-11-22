@@ -27,7 +27,6 @@ import {
   FolderOpen,
   KeyRound,
   Loader2,
-  LogOut,
   Megaphone,
   MessageSquare,
   NotebookPen,
@@ -424,6 +423,11 @@ export default function ClassDetailView() {
     }
   }
 
+  function closeClassOptions(options: HTMLDetailsElement) {
+    options.open = false;
+    options.querySelector("summary")?.focus();
+  }
+
   async function regenerateCode() {
     if (
       !window.confirm(
@@ -724,6 +728,7 @@ export default function ClassDetailView() {
   const [eventDescription, setEventDescription] = useState("");
   const [eventIsExam, setEventIsExam] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
+  const [eventFormOpen, setEventFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const eventFormRef = useRef<HTMLFormElement>(null);
 
@@ -823,6 +828,19 @@ export default function ClassDetailView() {
     setEventIsExam(false);
   }
 
+  function focusEventForm() {
+    requestAnimationFrame(() => {
+      const form = eventFormRef.current;
+      form?.scrollIntoView({ behavior: "smooth", block: "center" });
+      form?.querySelector<HTMLInputElement>("#event-title")?.focus({ preventScroll: true });
+    });
+  }
+
+  function toggleEventForm() {
+    setEventFormOpen(!eventFormOpen);
+    if (!eventFormOpen) focusEventForm();
+  }
+
   function startEditEvent(event: ClassEvent) {
     setEditingEventId(event.id);
     setEventTitle(event.title);
@@ -832,9 +850,8 @@ export default function ClassDetailView() {
     setEventLocation(event.location ?? "");
     setEventDescription(event.description ?? "");
     setEventIsExam(event.is_exam);
-    requestAnimationFrame(() => {
-      eventFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
+    setEventFormOpen(true);
+    focusEventForm();
   }
 
   async function removeEvent(event: ClassEvent) {
@@ -989,22 +1006,32 @@ export default function ClassDetailView() {
                 )}
               </button>
               {isOwner && (
-                <>
-                  <Button variant="outline" size="sm" onClick={startEditing}>
-                    Renombrar
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={regenerateCode}>
-                    Nuevo codigo
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={deleteClass}>
-                    <Trash2 className="h-4 w-4" /> Eliminar
-                  </Button>
-                </>
-              )}
-              {!isOwner && (
-                <Button variant="outline" size="sm" onClick={leaveClass}>
-                  <LogOut className="h-4 w-4" /> Salir
-                </Button>
+                <details
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape" || !event.currentTarget.open) return;
+                    event.preventDefault();
+                    closeClassOptions(event.currentTarget);
+                  }}
+                >
+                  <summary className="flex min-h-11 cursor-pointer items-center rounded-md border border-border/60 px-2.5 text-sm hover:bg-accent">
+                    Opciones de la clase
+                  </summary>
+                  <div className="mt-2 grid gap-1">
+                    <Button variant="outline" size="sm" onClick={(event) => {
+                      const options = event.currentTarget.closest("details");
+                      if (options) closeClassOptions(options);
+                      startEditing();
+                    }}>
+                      Renombrar
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void regenerateCode()}>
+                      Nuevo código
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => void deleteClass()}>
+                      <Trash2 className="h-4 w-4" /> Eliminar
+                    </Button>
+                  </div>
+                </details>
               )}
             </div>
           </div>
@@ -1070,7 +1097,7 @@ export default function ClassDetailView() {
       {tab === "news" && <ClassNewsTab classId={classId} messages={messages} isOwner={isOwner} userId={user?.id??""} onRefresh={loadAll} onPin={togglePin} onDelete={removeMessage} assignments={assignments} events={events} />}
       {/* ------------------------------------------------------------- Calendario */}
       {tab === "calendar" && (
-        <ClassCalendarTab setMonth={setMonth} month={month} monthLabel={monthLabel} setShareDatesOpen={setShareDatesOpen} WEEKDAYS={WEEKDAYS} grid={grid} localDayKey={localDayKey} eventsByDay={eventsByDay} eventDate={eventDate} setEventDate={setEventDate} editingEventId={editingEventId} eventFormRef={eventFormRef} createEvent={createEvent} eventTitle={eventTitle} setEventTitle={setEventTitle} eventStart={eventStart} setEventStart={setEventStart} eventEnd={eventEnd} setEventEnd={setEventEnd} eventLocation={eventLocation} setEventLocation={setEventLocation} eventDescription={eventDescription} setEventDescription={setEventDescription} eventIsExam={eventIsExam} setEventIsExam={setEventIsExam} savingEvent={savingEvent} resetEventForm={resetEventForm} upcomingEvents={upcomingEvents} formatEventRange={formatEventRange} user={user} isOwner={isOwner} startEditEvent={startEditEvent} removeEvent={removeEvent} />
+        <ClassCalendarTab setMonth={setMonth} month={month} monthLabel={monthLabel} setShareDatesOpen={setShareDatesOpen} WEEKDAYS={WEEKDAYS} grid={grid} localDayKey={localDayKey} eventsByDay={eventsByDay} eventDate={eventDate} setEventDate={setEventDate} editingEventId={editingEventId} eventFormOpen={eventFormOpen} toggleEventForm={toggleEventForm} eventFormRef={eventFormRef} createEvent={createEvent} eventTitle={eventTitle} setEventTitle={setEventTitle} eventStart={eventStart} setEventStart={setEventStart} eventEnd={eventEnd} setEventEnd={setEventEnd} eventLocation={eventLocation} setEventLocation={setEventLocation} eventDescription={eventDescription} setEventDescription={setEventDescription} eventIsExam={eventIsExam} setEventIsExam={setEventIsExam} savingEvent={savingEvent} resetEventForm={resetEventForm} upcomingEvents={upcomingEvents} formatEventRange={formatEventRange} user={user} isOwner={isOwner} startEditEvent={startEditEvent} removeEvent={removeEvent} />
       )}
 
       {shareDatesOpen && detail ? (

@@ -24,6 +24,8 @@ export function ClassCalendarTab({
   eventDate,
   setEventDate,
   editingEventId,
+  eventFormOpen,
+  toggleEventForm,
   eventFormRef,
   createEvent,
   eventTitle,
@@ -58,6 +60,8 @@ export function ClassCalendarTab({
   eventDate: string;
   setEventDate: React.Dispatch<React.SetStateAction<string>>;
   editingEventId: string | null;
+  eventFormOpen: boolean;
+  toggleEventForm: () => void;
   eventFormRef: React.RefObject<HTMLFormElement>;
   createEvent: (e: React.FormEvent) => Promise<void>;
   eventTitle: string;
@@ -187,10 +191,20 @@ export function ClassCalendarTab({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
-              {editingEventId ? "Editar evento" : "Anadir evento"}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-expanded={eventFormOpen}
+                aria-controls="class-event-form"
+                disabled={savingEvent}
+                onClick={toggleEventForm}
+              >
+                {eventFormOpen ? "Plegar formulario" : editingEventId ? "Editar evento" : "Añadir evento"}
+              </Button>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent id="class-event-form" hidden={!eventFormOpen}>
             <form
               ref={eventFormRef}
               onSubmit={createEvent}

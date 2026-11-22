@@ -18,9 +18,6 @@ export function ClassNotebooksTab({
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
         <div>
           <CardTitle className="text-base">Cuadernos compartidos</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Apuntes que los miembros han compartido con la clase.
-          </p>
         </div>
         <Link href="/notebooks">
           <Button size="sm" variant="secondary">

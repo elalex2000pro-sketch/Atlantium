@@ -31,6 +31,11 @@ export default function ClassesPage() {
   const [creating, setCreating] = useState(false);
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
+  const [createExpanded, setCreateExpanded] = useState<boolean | null>(null);
+  const [joinExpanded, setJoinExpanded] = useState<boolean | null>(null);
+  const empty = !loading && classes.length === 0;
+  const showCreate = createExpanded ?? empty;
+  const showJoin = joinExpanded ?? empty;
 
   const load = useCallback(async () => {
     setClasses(filterDeletedClasses(await api.classes()));
@@ -106,8 +111,7 @@ export default function ClassesPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Clases compartidas</h1>
         <p className="text-sm text-muted-foreground">
-          Crea una clase y comparte su codigo: quien se una entra de forma permanente y tiene
-          chat, calendario y archivos en comun con el resto.
+          Comparte calendario, publicaciones y archivos con tus compañeros.
         </p>
       </header>
 
@@ -120,11 +124,21 @@ export default function ClassesPage() {
       <div className="grid max-w-6xl gap-6 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Plus className="h-4 w-4" /> Crear una clase
+            <CardTitle className="text-base">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-expanded={showCreate}
+                aria-controls="create-class-form"
+                disabled={creating}
+                onClick={() => setCreateExpanded(!showCreate)}
+              >
+                <Plus className="h-4 w-4" /> Crear una clase
+              </Button>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent id="create-class-form" hidden={!showCreate}>
             <form onSubmit={create} className="space-y-3">
               <div className="space-y-1">
                 <Label htmlFor="class-name">Nombre</Label>
@@ -156,12 +170,23 @@ export default function ClassesPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <KeyRound className="h-4 w-4" /> Unirse con codigo
+            <CardTitle className="text-base">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-expanded={showJoin}
+                aria-controls="join-class-form"
+                disabled={joining}
+                onClick={() => setJoinExpanded(!showJoin)}
+              >
+                <KeyRound className="h-4 w-4" /> Unirse con código
+              </Button>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent id="join-class-form" hidden={!showJoin}>
             <form onSubmit={join} className="space-y-3">
+              <p className="text-sm text-muted-foreground">Te unirás de forma permanente a la clase.</p>
               <div className="space-y-1">
                 <Label htmlFor="class-code">Codigo de la clase</Label>
                 <Input
