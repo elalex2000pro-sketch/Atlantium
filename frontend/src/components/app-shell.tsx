@@ -134,6 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // gestionan su propia cabecera; el inset del shell les haría desbordar.
   const isBookReader = pathname.startsWith("/library/");
   const isOffice = pathname === "/office";
+  const isDashboard = pathname === "/";
   const isPlanner = pathname === "/planner";
   const isChat = pathname === "/chat";
   const isImmersive = pathname === "/studio" || isBookReader || isChat;
@@ -230,13 +231,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <NotificationBell className={HEADER_BUTTON} />
               </motion.div>
-              <motion.div
-                whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className={isOffice ? HEADER_CONTROL_FLAT : HEADER_CONTROL}
-              >
-                <ThemeCycleButton className={HEADER_BUTTON} />
-              </motion.div>
+              {!isDashboard && (
+                <motion.div
+                  whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  className={isOffice ? HEADER_CONTROL_FLAT : HEADER_CONTROL}
+                >
+                  <ThemeCycleButton className={HEADER_BUTTON} />
+                </motion.div>
+              )}
               <motion.div
                 whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -271,7 +274,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={cn(
                 "mx-auto w-full",
                 isChat && "px-4 py-4 md:pl-4 md:pr-5",
-                !isImmersive && (isPlanner ? "max-w-[1800px]" : "max-w-7xl"),
+                !isImmersive && (isDashboard ? "max-w-[1720px]" : isPlanner ? "max-w-[1800px]" : "max-w-7xl"),
               )}
             >
               <ErrorBoundary resetKey={pathname}>
@@ -281,7 +284,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
 
-        {!isImmersive && !isPlanner ? <ContextPanel /> : null}
+        {!isDashboard && !isImmersive && !isPlanner ? <ContextPanel /> : null}
 
         {!isBookReader ? <MobileNavigationBar /> : null}
       </div>

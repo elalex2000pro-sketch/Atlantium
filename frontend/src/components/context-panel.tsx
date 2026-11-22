@@ -63,7 +63,7 @@ function formatDue(value: string | null): string {
  * Pomodoro rápido. Solo se muestra en pantallas anchas (2xl) y hereda el
  * lenguaje Liquid Glass del resto de la interfaz.
  */
-export function ContextPanel() {
+export function ContextPanel({ dashboard = false }: { dashboard?: boolean }) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [month, setMonth] = useState(() => {
@@ -160,90 +160,93 @@ export function ContextPanel() {
   return (
     <aside
       aria-label="Panel de contexto"
-      className="sticky top-10 mr-4 hidden h-[calc(100dvh-3.5rem)] w-[280px] shrink-0 flex-col gap-3 overflow-y-auto pb-1 min-[1440px]:flex"
+      className={dashboard
+        ? "flex min-w-0 flex-col gap-3"
+        : "sticky top-10 mr-4 hidden h-[calc(100dvh-3.5rem)] w-[280px] shrink-0 flex-col gap-3 overflow-y-auto pb-1 min-[1440px]:flex"}
     >
       <p className="px-2 pt-1 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-black/35 dark:text-white/30">
         Contexto
       </p>
 
-      {/* Mini-calendario */}
-      <section className="rounded-[26px] border border-white/40 bg-white/45 p-3.5 shadow-[0_20px_50px_-36px_rgba(32,39,48,0.45)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.045]">
-        <div className="flex items-center justify-between gap-1">
-          <p className="text-[11.5px] font-semibold capitalize tracking-[-0.01em] text-slate-700 dark:text-white/80">
-            {monthLabel}
-          </p>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() =>
-                setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))
-              }
-              aria-label="Mes anterior"
-              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-black/[0.05] hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white/80"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
-              }
-              aria-label="Mes siguiente"
-              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-black/[0.05] hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white/80"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+      {!dashboard && (
+        <section className="rounded-[26px] border border-white/40 bg-white/45 p-3.5 shadow-[0_20px_50px_-36px_rgba(32,39,48,0.45)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.045]">
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-[11.5px] font-semibold capitalize tracking-[-0.01em] text-slate-700 dark:text-white/80">
+              {monthLabel}
+            </p>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() =>
+                  setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))
+                }
+                aria-label="Mes anterior"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-black/[0.05] hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white/80"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
+                }
+                aria-label="Mes siguiente"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-black/[0.05] hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white/80"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-2.5 grid grid-cols-7 gap-y-0.5 text-center">
-          {WEEKDAYS.map((day) => (
-            <span
-              key={day}
-              className="text-[8.5px] font-semibold uppercase tracking-[0.06em] text-black/30 dark:text-white/25"
-            >
-              {day}
-            </span>
-          ))}
-          {days.map((day) => {
-            const key = dateKey(day);
-            const inMonth = day.getMonth() === month.getMonth();
-            const isToday = key === todayKey;
-            return (
-              <span key={key} className="relative flex justify-center py-0.5">
-                <span
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-medium tabular-nums",
-                    isToday
-                      ? "bg-[#1b1b1f] text-white shadow-[0_6px_14px_-10px_rgba(20,20,28,0.9)] dark:bg-[#e9e4f6] dark:text-[#1b1b1f]"
-                      : inMonth
-                        ? "text-slate-600 dark:text-white/65"
-                        : "text-slate-300 dark:text-white/20",
-                  )}
-                >
-                  {day.getDate()}
-                </span>
-                {markedDays.has(key) ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "absolute bottom-0 h-1 w-1 rounded-full",
-                      isToday ? "bg-white/80 dark:bg-[#1b1b1f]/70" : "bg-[#0066FF]",
-                    )}
-                  />
-                ) : null}
+          <div className="mt-2.5 grid grid-cols-7 gap-y-0.5 text-center">
+            {WEEKDAYS.map((day) => (
+              <span
+                key={day}
+                className="text-[8.5px] font-semibold uppercase tracking-[0.06em] text-black/30 dark:text-white/25"
+              >
+                {day}
               </span>
-            );
-          })}
-        </div>
+            ))}
+            {days.map((day) => {
+              const key = dateKey(day);
+              const inMonth = day.getMonth() === month.getMonth();
+              const isToday = key === todayKey;
+              return (
+                <span key={key} className="relative flex justify-center py-0.5">
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-medium tabular-nums",
+                      isToday
+                        ? "bg-[#1b1b1f] text-white shadow-[0_6px_14px_-10px_rgba(20,20,28,0.9)] dark:bg-[#e9e4f6] dark:text-[#1b1b1f]"
+                        : inMonth
+                          ? "text-slate-600 dark:text-white/65"
+                          : "text-slate-300 dark:text-white/20",
+                    )}
+                  >
+                    {day.getDate()}
+                  </span>
+                  {markedDays.has(key) ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute bottom-0 h-1 w-1 rounded-full",
+                        isToday ? "bg-white/80 dark:bg-[#1b1b1f]/70" : "bg-[#0066FF]",
+                      )}
+                    />
+                  ) : null}
+                </span>
+              );
+            })}
+          </div>
 
-        <Link
-          href="/planner"
-          className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 transition-colors hover:text-slate-800 dark:text-white/40 dark:hover:text-white/80"
-        >
-          <CalendarDays className="h-3 w-3" /> Abrir planificador
-        </Link>
-      </section>
+          <Link
+            href="/planner"
+            className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 transition-colors hover:text-slate-800 dark:text-white/40 dark:hover:text-white/80"
+          >
+            <CalendarDays className="h-3 w-3" /> Abrir planificador
+          </Link>
+        </section>
+      )}
 
       {/* Próxima tarea */}
       <Link

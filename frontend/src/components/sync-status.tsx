@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import { api } from "@/lib/api";
 import type { SyncLog } from "@/lib/types";
@@ -12,11 +12,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   all: "Todas",
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  success: "#30d158",
-  partial: "#ff9f0a",
-  error: "#ff453a",
-};
+const STATUS_LABEL = { success: "Correcta", partial: "Parcial", error: "Error" };
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "nunca";
@@ -70,72 +66,32 @@ export function SyncStatus({ onSynced }: { onSynced?: () => void }) {
     }
   }, [refresh, onSynced]);
 
+  const status = logs[0]?.status;
   const lastSync = logs[0]?.finished_at ?? logs[0]?.started_at ?? null;
 
+  const detail = syncing ? "trabajando…" : message ??
+    (status ? `${STATUS_LABEL[status]} · ${relativeTime(lastSync)}` : "Sin historial");
+
   return (
-    <section className="app-glass rounded-3xl p-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              syncing ? "bg-[#ff9f0a]" : "bg-[#30d158]"
-            }`}
-          />
-          <p className="truncate text-[12px] font-medium text-slate-700 dark:text-white/75">
-            Sincronización
-          </p>
-          <span className="truncate text-[9.5px] text-slate-400 dark:text-white/25">
-            {syncing ? "trabajando…" : relativeTime(lastSync)}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={handleSync}
-          disabled={syncing}
-          title="Sincronizar ahora"
-          aria-label="Sincronizar ahora"
-          className="app-glass-soft flex h-7 w-7 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-900/[0.05] hover:text-slate-800 disabled:opacity-50 dark:text-white/35 dark:hover:bg-white/[0.08] dark:hover:text-white/75"
-        >
-          {syncing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-        </button>
-      </div>
-
-      {logs.length === 0 ? (
-        <p className="mt-2.5 flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-white/30">
-          <WifiOff className="h-3 w-3" /> Aún no hay sincronizaciones.
-        </p>
-      ) : (
-        <div className="mt-2.5 space-y-1">
-          {logs.slice(0, 3).map((log) => (
-            <div key={log.id} className="flex items-center justify-between gap-2 text-[10.5px]">
-              <span className="flex min-w-0 items-center gap-1.5 text-slate-500 dark:text-white/40">
-                <Wifi className="h-3 w-3 shrink-0" />
-                <span className="truncate">{PROVIDER_LABEL[log.provider] ?? log.provider}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                <span className="tabular-nums text-slate-400 dark:text-white/25">
-                  +{log.created} ~{log.updated} -{log.removed}
-                </span>
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: STATUS_COLOR[log.status] ?? "#8e8e93" }}
-                  title={log.status}
-                />
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {message && (
-        <p className="mt-2 truncate text-[10px] text-slate-500 dark:text-white/30" title={message}>
-          {message}
-        </p>
-      )}
+    <section className="flex items-center justify-between gap-2 px-1 text-muted-foreground" aria-label="Sincronización">
+      <p className="flex min-w-0 items-center gap-2 text-[11px]">
+        <span className="shrink-0 font-medium">Sincronización</span>
+        <span role="status" className="truncate" title={detail}>{detail}</span>
+      </p>
+      <button
+        type="button"
+        onClick={handleSync}
+        disabled={syncing}
+        title="Sincronizar ahora"
+        aria-label="Sincronizar ahora"
+        className="app-glass-soft flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-900/[0.05] hover:text-slate-800 disabled:opacity-50 dark:text-white/35 dark:hover:bg-white/[0.08] dark:hover:text-white/75"
+      >
+        {syncing ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" />
+        )}
+      </button>
     </section>
   );
 }

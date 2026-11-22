@@ -10,22 +10,18 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
-  Layers,
-  ListTodo,
   Loader2,
   Pencil,
-  Timer,
 } from "lucide-react";
 
 import { useAuth } from "@/components/auth-provider";
+import { ContextPanel } from "@/components/context-panel";
 import { GamificationCard } from "@/components/gamification-card";
 import { EditablePanels, type EditablePanelDefinition } from "@/components/layout/editable-panels";
 import { usePreferences } from "@/components/preferences-provider";
 import { Input } from "@/components/ui/input";
 import { SyncStatus } from "@/components/sync-status";
 import { TaskList } from "@/components/task-list";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { StatsCard } from "@/components/ui/stats-card";
 import { useRealtime } from "@/components/realtime-provider";
 import { useTaskManager } from "@/hooks/use-task-manager";
 import { api } from "@/lib/api";
@@ -43,15 +39,12 @@ import type {
   GradeSummary,
   OptimizedPlan,
 } from "@/lib/types";
-import { formatMinutes } from "@/lib/utils";
 import { AgendaTimeline } from "@/components/dashboard/agenda-timeline";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
-import { QuickDock } from "@/components/dashboard/quick-dock";
 import { WeekCalendar } from "@/components/dashboard/week-calendar";
 import {
   DASHBOARD_ITEM,
   DASHBOARD_STAGGER,
-  STATS_STAGGER,
   capitalize,
   gradeOverTen,
   groupByDay,
@@ -84,7 +77,6 @@ export default function DashboardPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
-  const initialLoading = loading && !plan && !agenda;
 
   const {
     activeTasks,
@@ -199,7 +191,7 @@ export default function DashboardPage() {
   );
 
   const tasks = activeTasks;
-  const name = user?.full_name?.trim() || user?.email.split("@")[0] || "estudiante";
+  const name = user?.full_name?.trim().split(/\s+/)[0] || user?.email.split("@")[0] || "estudiante";
   const now = new Date();
   const dateLabel = capitalize(
     now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" }),
@@ -216,13 +208,6 @@ export default function DashboardPage() {
         const bTime = b.last_opened_at ? Date.parse(b.last_opened_at) : 0;
         return bTime - aTime;
       })[0] ?? null;
-
-  const readingBooks = books.filter(
-    (book) => book.status === "ready" && book.progress_percent > 0 && book.progress_percent < 99,
-  );
-  const readingProgress = readingBooks.length
-    ? readingBooks.reduce((total, book) => total + book.progress_percent, 0) / readingBooks.length
-    : 0;
 
   const impulse = continueBook
     ? `Dedica 15 minutos a “${continueBook.title}”. El lector te devolverá a ${
@@ -246,10 +231,7 @@ export default function DashboardPage() {
   const hasToday = todayItems.length > 0;
   const hasAnything = hasToday || upcoming.length > 0;
 
-  const completedBlocks = todayItems.filter((item) => item.completed).length;
   const totalBlocks = todayItems.length;
-  const blockProgress = totalBlocks ? (completedBlocks / totalBlocks) * 100 : 0;
-  const completedMinutes = agenda?.completed_minutes ?? 0;
   const totalMinutes = agenda?.total_minutes ?? 0;
   const planProgress = Math.round(agenda?.progress_percent ?? 0);
   const urgentCount = tasks.filter((task) => task.priority === "urgent").length;
@@ -403,70 +385,6 @@ export default function DashboardPage() {
       ),
     },
     {
-      id: "stats",
-      label: "Métricas",
-      minW: 4,
-      minH: 2,
-      node: (
-        <motion.section
-          variants={STATS_STAGGER}
-          aria-busy={initialLoading}
-          className="relative grid h-full grid-cols-[repeat(auto-fit,minmax(180px,1fr))] content-start gap-4"
-        >
-          {initialLoading ? (
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] content-start gap-4"
-            >
-              {[0, 1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-[166px] animate-pulse rounded-2xl border border-white/50 bg-white/30 motion-reduce:animate-none dark:border-white/[0.07] dark:bg-white/[0.04]"
-                />
-              ))}
-            </div>
-          ) : null}
-          <StatsCard
-            title="Pendientes"
-            value={<AnimatedCounter value={tasks.length} />}
-            change={
-              tasks.length === 0
-                ? "Todo al día"
-                : `${urgentCount} urgente${urgentCount === 1 ? "" : "s"}`
-            }
-            icon={ListTodo}
-            gradient="from-rose-500 to-orange-500"
-            tone={urgentCount > 0 ? "warning" : "positive"}
-          />
-
-          <StatsCard
-            title="Plan de hoy"
-            value={<AnimatedCounter value={planProgress} suffix="%" />}
-            change={`${formatMinutes(completedMinutes)} de ${formatMinutes(totalMinutes)}`}
-            icon={Timer}
-            gradient="from-emerald-400 to-teal-600"
-          />
-
-          <StatsCard
-            title="Bloques"
-            value={<AnimatedCounter value={completedBlocks} />}
-            change={`de ${totalBlocks} bloque${totalBlocks === 1 ? "" : "s"} · ${Math.round(blockProgress)}%`}
-            icon={Layers}
-            gradient="from-violet-500 to-indigo-600"
-          />
-
-          <StatsCard
-            title="Lectura"
-            value={<AnimatedCounter value={readingBooks.length} />}
-            change={readingBooks.length ? `${Math.round(readingProgress)}% de media` : "Sin lecturas activas"}
-            icon={BookOpen}
-            gradient="from-sky-400 to-blue-600"
-            tone={readingBooks.length > 0 ? "positive" : "neutral"}
-          />
-        </motion.section>
-      ),
-    },
-    {
       id: "agenda",
       label: "Plan de hoy",
       minW: 4,
@@ -580,19 +498,12 @@ export default function DashboardPage() {
         </motion.div>
       ),
     },
-    {
-      id: "quickdock",
-      label: "Acceso rápido",
-      minW: 4,
-      minH: 1,
-      node: <QuickDock />,
-    },
   ];
 
   return (
     <motion.div
       variants={DASHBOARD_STAGGER}
-      className="relative mx-auto max-w-[1500px] px-4 pb-12 pt-4 sm:px-6 lg:px-8 lg:pt-6"
+      className="relative mx-auto px-4 pb-12 pt-4 sm:px-6 lg:px-8 lg:pt-6"
     >
       {/* Barra de nivel y experiencia, visible al entrar al inicio. */}
       <div className="mb-4">
@@ -813,7 +724,10 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      <EditablePanels section="dashboard" panels={dashboardPanels} className="mt-4" />
+      <div className="mt-4 grid min-w-0 items-start gap-4 min-[1440px]:grid-cols-[minmax(0,1fr)_250px] 2xl:grid-cols-[minmax(0,1fr)_280px]">
+        <EditablePanels section="dashboard" panels={dashboardPanels} />
+        <ContextPanel dashboard />
+      </div>
 
       {editingExam ? (
         <ExamDialog
