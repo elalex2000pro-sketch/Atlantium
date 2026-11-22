@@ -16,9 +16,15 @@ async function main() {
   const user = await (await fetch(API + '/api/v1/auth/me', { headers: { Authorization: 'Bearer ' + token } })).json();
   await fs.mkdir(output, { recursive: true });
   const browser = await chromium.launch({ channel: process.env.SMOKE_BROWSER_CHANNEL || 'chrome', headless: true });
+  let currentCase;
   try {
     for (const width of [390, 768, 1280]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme, reducedMotion: 'reduce' });
+      const pending = new Set();
+      currentCase = { width, theme, pending };
+      context.on('request', request => pending.add(request));
+      context.on('requestfinished', request => pending.delete(request));
+      context.on('requestfailed', request => pending.delete(request));
       await context.addInitScript(({ token, user, theme }) => {
         if (sessionStorage.getItem('r2-initialized')) return;
         localStorage.setItem('autopilot_token', token);
@@ -31,8 +37,8 @@ async function main() {
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
-      await page.goto(WEB, { waitUntil: 'networkidle' });
-      await page.locator('main h1').first().waitFor();
+      await page.goto(WEB, { waitUntil: 'domcontentloaded' });
+      await page.locator('main h1').first().waitFor({ state: 'visible' });
       await page.waitForTimeout(1200);
       await page.screenshot({ path: path.join(output, `${width}-${theme}-expanded.png`), animations: 'disabled' });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No page overflow');
@@ -41,7 +47,8 @@ async function main() {
         const toggle = sidebar.getByRole('button', { name: 'Ocultar nombres de la barra' });
         await toggle.click();
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'true');
-        await page.reload({ waitUntil: 'networkidle' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await sidebar.getByRole('button', { name: 'Mostrar nombres de la barra', exact: true }).waitFor({ state: 'visible' });
         assert.equal(await sidebar.getAttribute('data-collapsed'), 'true', 'Persists collapse');
         const planner = sidebar.getByRole('link', { name: 'Planificador', exact: true });
         await planner.focus();
@@ -71,6 +78,14 @@ async function main() {
       await context.close();
       console.log(`PASS sidebar ${baseline ? 'before' : 'after'} ${width} ${theme}`);
     }
+  } catch (error) {
+    if (error.name === 'TimeoutError' && currentCase) {
+      const { width, theme, pending } = currentCase;
+      // Query strings can contain credentials.
+      const urls = [...pending].map(request => request.url().split(/[?#]/, 1)[0]);
+      console.error(`Peticiones pendientes al agotar la espera (${width} px, ${theme}):`, urls);
+    }
+    throw error;
   } finally { await browser.close(); }
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
