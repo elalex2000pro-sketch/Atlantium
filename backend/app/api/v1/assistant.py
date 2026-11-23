@@ -38,10 +38,11 @@ from app.schemas.assistant import (
     ChatResponse,
     ConfirmRequest,
     MessageAttachment,
+    PanelChatRequest,
     PendingAction,
 )
 from app.services import ai_gateway, ai_service, ai_studio_service, ai_tools
-from app.services.ai_errors import AiRequestRejected, log_provider_error
+from app.services.ai_errors import AiRequestRejected, log_provider_error, provider_error_message
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -152,6 +153,38 @@ async def list_messages(
         .limit(limit)
     )
     return list(reversed(list(result.scalars().all())))
+
+
+@router.post("/panel/chat", response_model=ChatResponse)
+async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: DbSession) -> ChatResponse:
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Escribe un mensaje.")
+    profile = await ai_gateway.load_profile(db, current_user)
+    if payload.provider != profile.provider:
+        raise HTTPException(status_code=409, detail="Ha cambiado tu proveedor de IA. Revísalo antes de enviar.")
+    ai_gateway.require_personal_key(profile)
+    if not profile.configured:
+        raise HTTPException(status_code=400, detail="Configura tu motor de IA en Ajustes.")
+
+    # Este panel no consulta historial, adjuntos ni datos académicos.
+    # Las herramientas tampoco se exponen: sus resultados podrían incluir esos datos.
+    try:
+        result = await ai_gateway.request_ai(
+            db, current_user, "asistente", "texto",
+            ai_gateway.ChatRequest([{"role": "user", "content": message}]),
+            profile=profile,
+        )
+    except AiRequestRejected:
+        raise
+    except Exception as exc:  # noqa: BLE001 - solo se devuelve el mensaje seguro
+        log_provider_error(logger, profile.provider, exc)
+        raise HTTPException(status_code=502, detail=provider_error_message(exc)) from None
+
+    reply = result.get("content")
+    if not isinstance(reply, str) or not reply.strip():
+        raise HTTPException(status_code=502, detail="El proveedor no devolvió una respuesta de texto.")
+    return ChatResponse(reply=reply.strip(), source="ai", created_at=utcnow())
 
 
 @router.post("/chat", response_model=ChatResponse)

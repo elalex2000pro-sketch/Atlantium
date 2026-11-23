@@ -164,6 +164,39 @@ async function main() {
       console.log(`PASS ${viewport.width} ${reader} (link and direct)`);
       for (const [route, target] of [['/assistant', '/studio?mode=chat'], ['/transcribe', '/studio?mode=audio'], ['/subjects', '/academics'], ['/exams', '/academics']]) await visit(route, target);
       }
+      await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: '' });
+      await visit('/planner');
+      await page.locator('main').evaluate(element => { element.dataset.aiSmoke = 'preserved'; });
+      const quickTrigger = page.getByRole('button', { name: 'Abrir panel de IA', exact: true });
+      await quickTrigger.click();
+      const quickPanel = page.getByRole('dialog', { name: 'Panel de IA', exact: true });
+      await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
+      await quickPanel.getByText('Falta tu clave de IA en Ajustes', { exact: false }).waitFor();
+      assert.equal(await quickPanel.getByRole('link', { name: 'Abrir Ajustes de IA' }).getAttribute('href'), '/settings?tab=integrations');
+      assert.ok(await quickPanel.getByRole('button', { name: 'Enviar mensaje' }).isDisabled());
+      await page.keyboard.press('Escape');
+      await quickPanel.waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
+      await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: 'clave-simulada' });
+      let quickRequest;
+      await page.route('**/api/v1/assistant/panel/chat', route => {
+        quickRequest = route.request().postDataJSON();
+        return route.fulfill({ json: { reply: 'Respuesta del panel simulado', source: 'ai', created_at: new Date().toISOString() } });
+      });
+      await quickTrigger.click();
+      await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
+      await quickPanel.getByRole('textbox', { name: 'Mensaje para la IA' }).fill('Consulta breve');
+      await quickPanel.getByRole('button', { name: 'Enviar mensaje' }).click();
+      await quickPanel.getByText('Respuesta del panel simulado', { exact: true }).waitFor();
+      assert.deepEqual(quickRequest, { message: 'Consulta breve', provider: 'gemini' });
+      await quickPanel.getByRole('button', { name: 'Cerrar panel de IA' }).click();
+      await quickPanel.waitFor({ state: 'hidden' });
+      assert.equal(new URL(page.url()).pathname, '/planner');
+      assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
+      await page.unroute('**/api/v1/assistant/panel/chat');
+      await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: '' });
+      console.log(`PASS ${viewport.width} panel de IA: proveedor, clave, texto y pantalla conservada`);
+
       // Persist the model through the real test API; simulate provider replies only.
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', model: 'gemini-2.5-flash' });
       await visit('/studio');

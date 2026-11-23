@@ -444,6 +444,11 @@ export const api = {
     }),
   assistantMessages: (limit = 50) =>
     request<AssistantMessage[]>(`/api/v1/assistant/messages?limit=${limit}`),
+  panelChat: (message: string, provider: string) =>
+    request<ChatResponse>("/api/v1/assistant/panel/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, provider }),
+    }),
   chat: (
     message: string,
     documentId?: string | null,

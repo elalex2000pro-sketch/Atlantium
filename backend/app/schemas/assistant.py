@@ -39,6 +39,13 @@ class ChatRequest(BaseModel):
     page_context_label: str | None = Field(default=None, max_length=300)
 
 
+class PanelChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1, max_length=4000)
+    provider: AiProvider
+
+
 class PendingAction(BaseModel):
     """Accion destructiva que espera confirmacion del usuario."""
 
