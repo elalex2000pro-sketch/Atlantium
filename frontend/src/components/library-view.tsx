@@ -280,10 +280,6 @@ export default function LibraryView() {
           <h1 className="mt-2 text-[32px] font-semibold tracking-[-0.055em] text-[#1d1d1f] dark:text-white sm:text-[38px]">
             Biblioteca
           </h1>
-          <p className="mt-1 max-w-2xl text-[12.5px] leading-5 text-black/45 dark:text-white/50">
-            Tus PDFs se guardan en IndexedDB. Nada se envía a la nube y puedes
-            leerlos sin conexión.
-          </p>
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           {/* El PDF entra directamente en la sección elegida; luego se puede
@@ -346,19 +342,11 @@ export default function LibraryView() {
             <BookOpen className="h-9 w-9" />
           </div>
           <h2 className="mt-5 text-xl font-semibold tracking-[-0.035em] text-[#1d1d1f] dark:text-white">
-            Tu biblioteca empieza aquí
+            Aún no tienes libros
           </h2>
           <p className="mx-auto mt-2 max-w-md text-[12.5px] leading-6 text-black/45 dark:text-white/50">
-            Añade uno o varios PDFs. Generaremos la portada de la primera página
-            y guardaremos el progreso, las marcas y las notas en este navegador.
+            Añade un PDF para empezar a leer.
           </p>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="mt-6 inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-[#1b1b1f] px-5 text-[12px] font-semibold text-white transition hover:-translate-y-0.5"
-          >
-            <Plus className="h-4 w-4" /> Añadir PDFs
-          </button>
         </section>
       ) : (
         <>
@@ -422,13 +410,6 @@ export default function LibraryView() {
                   {visibleBooks.length} de {books.length} {books.length === 1 ? "PDF" : "PDFs"} en este dispositivo
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                className="flex h-11 touch-manipulation items-center rounded-full border border-black/[0.06] bg-white/55 px-3.5 text-[11.5px] font-semibold text-black/60 transition-colors hover:bg-white/85 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/60 dark:hover:bg-white/10"
-              >
-                Importar más
-              </button>
             </div>
 
             <div
@@ -549,12 +530,6 @@ export default function LibraryView() {
                         <p className="mt-1 inline-flex items-center rounded-full bg-black/[0.05] px-1.5 py-0.5 text-[9.5px] font-semibold text-black/45 dark:bg-white/[0.07] dark:text-white/45">
                           {categoryLabel(book.category)}
                         </p>
-                        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-[#1b1b1f] dark:bg-white"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
                       </div>
                       <button
                         type="button"
