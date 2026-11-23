@@ -26,17 +26,17 @@ const KIND_TABS: { id: DocumentKind; label: string; description: string }[] = [
   {
     id: "notes",
     label: "Apuntes rápidos",
-    description: "Cuadernos para tomar notas al vuelo",
+    description: "Cuadernos para notas",
   },
   {
     id: "formal",
     label: "Documentos formales",
-    description: "Documento de texto o hoja de cálculo",
+    description: "Texto y hojas de cálculo",
   },
   {
     id: "canvas",
     label: "Pizarras",
-    description: "Mapas mentales y esquemas libres",
+    description: "Mapas y esquemas",
   },
 ];
 
@@ -80,9 +80,6 @@ export function DocumentsView() {
           <h1 className="text-[24px] font-semibold tracking-[-0.03em] text-slate-900 dark:text-white/90">
             Documentos
           </h1>
-          <p className="text-[11.5px] text-slate-500 dark:text-white/40">
-            Apuntes, documentos formales y pizarras en un solo lugar.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -172,9 +169,6 @@ export function DocumentsView() {
                 <h2 id="documents-new-title" className="text-lg font-semibold tracking-tight">
                   ¿Qué quieres crear?
                 </h2>
-                <p className="text-[11.5px] text-slate-500 dark:text-white/40">
-                  Elige el tipo de documento y empezamos.
-                </p>
               </div>
               <button
                 type="button"
@@ -199,7 +193,7 @@ export function DocumentsView() {
                   Apunte rápido
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-white/40">
-                  Un cuaderno con plantillas para clase, Cornell o repaso.
+                  Cuaderno con plantillas para tus notas.
                 </span>
               </button>
 
@@ -215,7 +209,7 @@ export function DocumentsView() {
                   Documento formal
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-white/40">
-                  Editor de texto o hoja de cálculo con exportación a Word, PDF y Excel.
+                  Texto u hojas de cálculo para exportar.
                 </span>
               </button>
 
@@ -231,7 +225,7 @@ export function DocumentsView() {
                   Pizarra infinita
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-white/40">
-                  Lienzo libre para mapas mentales, fotos y esquemas de red.
+                  Espacio libre para mapas, fotos y esquemas.
                 </span>
               </button>
             </div>
