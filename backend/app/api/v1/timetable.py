@@ -23,7 +23,7 @@ from app.schemas.timetable import (
     TimetableImportResult,
 )
 from app.services import ai_generate, ai_studio_service
-from app.services.ai_errors import AiKeyRequired, log_provider_error
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -116,6 +116,7 @@ async def import_timetable(
             with open(abs_path, "rb") as handle:
                 image_bytes = handle.read()
             data = await ai_generate.generate_json_with_image(
+                db,
                 current_user,
                 system,
                 "Extrae todas las clases del horario de la foto.",
@@ -125,7 +126,7 @@ async def import_timetable(
             )
             raw_items = list(data.get("entries", []))
             source = "image-ai"
-        except AiKeyRequired:
+        except AiRequestRejected:
             raise
         except Exception as exc:  # noqa: BLE001
             log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
@@ -151,15 +152,17 @@ async def import_timetable(
             )
         try:
             data = await ai_generate.generate_json(
+                db,
                 current_user,
                 system,
                 f"Horario:\n\n{text[:12000]}",
+                source="horario",
                 max_tokens=2500,
                 temperature=0.1,
             )
             raw_items = list(data.get("entries", []))
             source = "ai"
-        except AiKeyRequired:
+        except AiRequestRejected:
             raise
         except Exception as exc:  # noqa: BLE001
             log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)

@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -11,7 +12,7 @@ from app.models.book import Book
 from test_chat_flow import account
 from test_peer_classwork import client
 
-from app.services import ai_service, ai_studio_service
+from app.services import ai_gateway, ai_service, ai_studio_service
 from app.services.ai_errors import AiProviderError, provider_error_message
 
 
@@ -34,7 +35,7 @@ async def test_gemini_chat_reports_network_failure_without_heuristic(monkeypatch
         raise error
     monkeypatch.setattr(ai_service, "build_context", context)
     monkeypatch.setattr(ai_service, "render_context_text", lambda ctx: "")
-    monkeypatch.setattr(ai_service, "resolve_profile", lambda user: SimpleNamespace(provider="gemini", configured=True, api_key="simulada"))
+    monkeypatch.setattr(ai_gateway, "load_profile", AsyncMock(return_value=SimpleNamespace(provider="gemini", configured=True, api_key="simulada")))
     monkeypatch.setattr(ai_service, "_run_model", fail)
     result = await ai_service.generate_reply(None, None, "hola", [])
     assert result.source == "error"
@@ -48,9 +49,9 @@ async def test_gemini_document_generation_does_not_save_fake_success(monkeypatch
         raise httpx.ConnectError("SECRET")
     monkeypatch.setattr(ai_studio_service, "extract_text", lambda doc: "texto")
     monkeypatch.setattr(ai_studio_service, "call_llm", fail)
-    monkeypatch.setattr(ai_studio_service, "resolve_profile", lambda user: SimpleNamespace(provider="gemini"))
+    user = SimpleNamespace(ai_provider="gemini")
     with pytest.raises(AiProviderError, match="conexión"):
-        await ai_studio_service.generate(None, None, None, "summary")
+        await ai_studio_service.generate(None, user, None, "summary")
 
 @pytest.mark.parametrize("provider", ["gemini", "openai", "claude", "openrouter", "custom"])
 def test_remote_ai_without_key_is_rejected_in_every_route(client, monkeypatch, provider):
@@ -126,7 +127,7 @@ async def test_local_studio_still_calls_configured_server(monkeypatch, server_ke
     monkeypatch.setattr(settings, "ai_api_key", server_key)
     user = SimpleNamespace(ai_provider="local", ai_api_key_encrypted=None, ai_model=None, ai_base_url=None)
 
-    async def post(client, url, *, json, headers):
+    async def post(client, url, *, json, headers, extensions):
         assert url == "http://ollama.example.invalid/v1/chat/completions"
         assert json["model"] == "modelo-local"
         assert headers.get("Authorization") == (f"Bearer {server_key}" if server_key else None)
@@ -136,7 +137,7 @@ async def test_local_studio_still_calls_configured_server(monkeypatch, server_ke
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "post", post)
-    assert await ai_studio_service.call_llm("Apuntes", "summary", user) == {"summary": "Listo"}
+    assert await ai_studio_service.call_llm(None, user, "Apuntes", "summary") == {"summary": "Listo"}
 
 
 @pytest.mark.asyncio
@@ -155,7 +156,7 @@ async def test_assistant_logs_only_provider_error_metadata(monkeypatch, caplog):
 
     monkeypatch.setattr(ai_service, "build_context", context)
     monkeypatch.setattr(ai_service, "render_context_text", lambda ctx: "")
-    monkeypatch.setattr(ai_service, "resolve_profile", lambda user: SimpleNamespace(provider="gemini", configured=True, api_key=secret))
+    monkeypatch.setattr(ai_gateway, "load_profile", AsyncMock(return_value=SimpleNamespace(provider="gemini", configured=True, api_key=secret)))
     monkeypatch.setattr(ai_service, "_run_model", fail)
 
     result = await ai_service.generate_reply(None, None, "mensaje privado", [])

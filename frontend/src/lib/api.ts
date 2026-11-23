@@ -428,6 +428,10 @@ export const api = {
   // --- Asistente de IA ---
   assistantStatus: () => request<AssistantStatus>("/api/v1/assistant/status"),
   getAiProfile: () => request<AssistantStatus>("/api/v1/assistant/profile"),
+  deleteAiKey: (provider: string) =>
+    request<AssistantStatus>(`/api/v1/assistant/profile/keys/${encodeURIComponent(provider)}`, {
+      method: "DELETE",
+    }),
   updateAiProfile: (body: {
     provider: string;
     api_key?: string | null;

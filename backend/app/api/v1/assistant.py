@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, select
+from sqlalchemy.orm import undefer
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUser, DbSession
@@ -24,7 +25,10 @@ from app.core.logging import get_logger
 from app.db.base import utcnow
 from app.models.assistant_message import AssistantMessage
 from app.models.document import Document
+from app.models.user import User
+from app.models.user_ai_key import UserAiKey
 from app.schemas.assistant import (
+    AiProvider,
     AiProfileUpdate,
     AssistantImportRequest,
     AssistantMessageRead,
@@ -36,8 +40,8 @@ from app.schemas.assistant import (
     MessageAttachment,
     PendingAction,
 )
-from app.services import ai_service, ai_studio_service, ai_tools
-from app.services.ai_errors import AiKeyRequired, log_provider_error
+from app.services import ai_gateway, ai_service, ai_studio_service, ai_tools
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -51,24 +55,49 @@ _ATTACHMENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 
 @router.get("/status", response_model=AssistantStatus)
-async def assistant_status(current_user: CurrentUser) -> AssistantStatus:
-    profile = ai_service.resolve_profile(current_user)
+async def assistant_status(current_user: CurrentUser, db: DbSession) -> AssistantStatus:
+    profile = await ai_gateway.load_profile(db, current_user)
+    providers = await db.scalars(select(UserAiKey.provider).where(UserAiKey.user_id == current_user.id))
     return AssistantStatus(
         enabled=settings.ai_enabled,
         configured=profile.configured,
         model=profile.model,
         vision_model=profile.vision_model,
         tools_enabled=profile.tools_enabled,
-        base_url=profile.base_url,
+        base_url=ai_gateway.public_base_url(profile.base_url),
         provider=profile.provider,
         has_api_key=bool(profile.api_key),
+        providers_with_key=sorted(providers),
+        custom_base_url=ai_gateway.public_base_url(current_user.ai_base_url or ""),
     )
 
 
 @router.get("/profile", response_model=AssistantStatus)
-async def get_profile(current_user: CurrentUser) -> AssistantStatus:
+async def get_profile(current_user: CurrentUser, db: DbSession) -> AssistantStatus:
     """Devuelve el proveedor de IA activo del usuario."""
-    return await assistant_status(current_user)
+    return await assistant_status(current_user, db)
+
+
+async def _lock_profile(current_user: User, db: DbSession) -> None:
+    # Serializa actualizaciones y borrados de clave del mismo usuario en PostgreSQL.
+    await db.scalar(select(User.id).where(User.id == current_user.id).with_for_update())
+
+
+async def _store_key(current_user: User, db: DbSession, provider: AiProvider, key: str) -> None:
+    saved = await db.get(
+        UserAiKey, (current_user.id, provider), options=[undefer(UserAiKey.encrypted_key)],
+    )
+    if saved is not None and current_user.ai_api_key_encrypted == saved.encrypted_key:
+        # Borra también la copia de 0029 cuando pertenece a la clave que se modifica.
+        current_user.ai_api_key_encrypted = None
+    if key:
+        encrypted = crypto.encrypt(key)
+        if saved is None:
+            db.add(UserAiKey(user_id=current_user.id, provider=provider, encrypted_key=encrypted))
+        else:
+            saved.encrypted_key = encrypted
+    elif saved is not None:
+        await db.delete(saved)
 
 
 @router.put("/profile", response_model=AssistantStatus)
@@ -76,20 +105,38 @@ async def update_profile(
     payload: AiProfileUpdate, current_user: CurrentUser, db: DbSession
 ) -> AssistantStatus:
     """Cambia el proveedor de IA (Local, Gemini, ChatGPT, Claude...) y su clave."""
+    key = payload.api_key.get_secret_value().strip() if payload.api_key is not None else None
+    if key is not None and len(key) > 500:
+        raise HTTPException(status_code=400, detail="La clave de IA supera la longitud permitida.")
+    if payload.provider == "custom" and payload.base_url is not None:
+        base_url = payload.base_url.strip().rstrip("/")
+        if base_url:
+            await ai_gateway.validate_custom_url(base_url)
+    await _lock_profile(current_user, db)
+    await db.refresh(current_user)
+    if payload.provider != current_user.ai_provider and payload.model is None:
+        current_user.ai_model = None
     current_user.ai_provider = payload.provider
-    if payload.api_key is not None:
-        # Cadena vacia = borrar la clave guardada.
-        current_user.ai_api_key_encrypted = crypto.encrypt(payload.api_key.strip()) or None
+    if key is not None:
+        await _store_key(current_user, db, payload.provider, key)
     if payload.model is not None:
         # Cadena vacia = volver al modelo por defecto del proveedor.
         current_user.ai_model = payload.model.strip() or None
-    if payload.base_url is not None:
-        current_user.ai_base_url = payload.base_url.strip().rstrip("/") or None
-    db.add(current_user)
+    if payload.provider == "custom" and payload.base_url is not None:
+        current_user.ai_base_url = base_url or None
     await db.commit()
-    await db.refresh(current_user)
     logger.info("Proveedor de IA cambiado a %s", payload.provider)
-    return await assistant_status(current_user)
+    return await assistant_status(current_user, db)
+
+
+@router.delete("/profile/keys/{provider}", response_model=AssistantStatus)
+async def delete_profile_key(provider: AiProvider, current_user: CurrentUser, db: DbSession) -> AssistantStatus:
+    """Borra solo la clave del proveedor indicado en la cuenta autenticada."""
+    await _lock_profile(current_user, db)
+    await db.refresh(current_user)
+    await _store_key(current_user, db, provider, "")
+    await db.commit()
+    return await assistant_status(current_user, db)
 
 
 @router.get("/messages", response_model=list[AssistantMessageRead])
@@ -123,7 +170,8 @@ async def chat(
             detail="Escribe un mensaje o adjunta una imagen o un documento",
         )
 
-    ai_service.require_personal_key(ai_service.resolve_profile(current_user))
+    profile = await ai_gateway.load_profile(db, current_user)
+    ai_gateway.require_personal_key(profile)
     image_data_urls = [item["data_url"] for item in prepared]
     document_text: str | None = None
     document_name: str | None = None
@@ -169,8 +217,9 @@ async def chat(
             document_name=document_name,
             page_context=payload.page_context,
             page_context_label=payload.page_context_label,
+            profile=profile,
         )
-    except AiKeyRequired:
+    except AiRequestRejected:
         raise
     except Exception as exc:  # noqa: BLE001 - el usuario siempre debe recibir respuesta
         log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)

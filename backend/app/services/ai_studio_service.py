@@ -8,7 +8,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import httpx
 from pypdf import PdfReader
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +18,8 @@ from app.db.base import utcnow
 from app.models.ai_output import AiOutput
 from app.models.document import Document
 from app.models.user import User
-from app.services.ai_service import require_personal_key, resolve_profile
-from app.services.ai_errors import AiKeyRequired, AiProviderError, log_provider_error, provider_error_message
+from app.services import ai_gateway
+from app.services.ai_errors import AiRequestRejected, AiProviderError, log_provider_error, provider_error_message
 from app.services.pdf_service import build_infographic_pdf, build_mindmap_pdf, build_summary_pdf
 
 try:
@@ -96,26 +95,10 @@ def _sanitize(text: str, *, truncate: bool = True) -> str:
     return text.strip()
 
 
-async def call_llm(user_text: str, kind: str, user: User | None = None) -> dict[str, Any]:
-    """Llama al modelo del usuario (o al global) para obtener el resultado estructurado."""
-    profile = resolve_profile(user) if user is not None else None
-    if profile is not None:
-        require_personal_key(profile)
-        if profile.provider != "local" and not profile.configured:
-            raise RuntimeError("IA no configurada")
-    if profile is not None and profile.configured:
-        model = profile.model
-        base_url = profile.base_url
-        api_key = profile.api_key
-        timeout = profile.timeout_seconds
-    else:
-        if not settings.ai_configured:
-            raise RuntimeError("IA no configurada")
-        model = settings.ai_model
-        base_url = settings.ai_base_url
-        api_key = settings.ai_api_key
-        timeout = settings.ai_timeout_seconds
-
+async def call_llm(
+    db: AsyncSession, user: User, user_text: str, kind: str,
+) -> dict[str, Any]:
+    """Pide al modelo del perfil un resultado estructurado."""
     system_summary = (
         "Eres un asistente academico especializado en resumir documentos en espanol. "
         "Devuelve SIEMPRE un JSON valido con este esquema: {\"title\": \"...\", \"summary\": \"texto claro y conciso\", \"key_points\": [\"...\", \"...\"], \"keywords\": [\"...\"]}"
@@ -136,33 +119,21 @@ async def call_llm(user_text: str, kind: str, user: User | None = None) -> dict[
         "Genera un resultado academico, accionable y directo en espanol."
     )
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    system_mindmap
-                    if kind == "mindmap"
-                    else (system_infog if kind == "infographic" else system_summary)
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": settings.ai_temperature,
-        "stream": False,
-    }
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    url = base_url.rstrip("/") + "/chat/completions"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-
-    content = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                system_mindmap
+                if kind == "mindmap"
+                else (system_infog if kind == "infographic" else system_summary)
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+    msg = await ai_gateway.request_ai(
+        db, user, "studio", "texto", ai_gateway.ChatRequest(messages),
+    )
+    content = msg.get("content") or ""
     content = content.strip()
     if not content:
         raise RuntimeError("Respuesta vacia del modelo")
@@ -230,11 +201,11 @@ async def generate(
     source = "ai"
     text = extract_text(document)
     try:
-        data = await call_llm(text, kind, user)
-    except AiKeyRequired:
+        data = await call_llm(db, user, text, kind)
+    except AiRequestRejected:
         raise
     except Exception as exc:  # noqa: BLE001
-        provider = resolve_profile(user).provider
+        provider = ai_gateway.active_provider(user)
         log_provider_error(logger, provider, exc)
         if provider == "gemini":
             raise AiProviderError(provider_error_message(exc)) from None

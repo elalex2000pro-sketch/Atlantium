@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import pytest
 
+from app.services.ai_gateway import gemini_native_url
 from app.services.ai_service import (
     _VISUAL_PROMPT,
     AiProfile,
     _gemini_contents,
-    _gemini_native_url,
     _gemini_schema,
     _gemini_tools,
     _split_data_url,
@@ -29,7 +29,7 @@ def profile(base_url: str = "https://generativelanguage.googleapis.com/v1beta/op
 
 
 def test_url_nativa_quita_openai():
-    url = _gemini_native_url(profile(), "gemini-2.5-flash")
+    url = gemini_native_url(profile(), "gemini-2.5-flash")
     assert url == (
         "https://generativelanguage.googleapis.com/v1beta/"
         "models/gemini-2.5-flash:generateContent"
@@ -37,7 +37,7 @@ def test_url_nativa_quita_openai():
 
 
 def test_url_nativa_sin_openai():
-    url = _gemini_native_url(
+    url = gemini_native_url(
         profile("https://generativelanguage.googleapis.com/v1beta"), "gemini-2.5-flash"
     )
     assert url.endswith("/v1beta/models/gemini-2.5-flash:generateContent")

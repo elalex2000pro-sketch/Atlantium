@@ -30,7 +30,7 @@ from app.schemas.learning import (
     QuizSubmit,
 )
 from app.services import ai_generate
-from app.services.ai_errors import AiKeyRequired, log_provider_error
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["learning"])
@@ -154,16 +154,18 @@ async def generate_flashcards(
     pairs: list[tuple[str, str]] = []
     try:
         data = await ai_generate.generate_json(
+            db,
             current_user,
             _FLASHCARD_SYSTEM,
             f"Cuaderno: {notebook.title}\n\n{content[:8000]}",
+            source="repaso",
         )
         for item in data.get("flashcards", []):
             front = str(item.get("front", "")).strip()
             back = str(item.get("back", "")).strip()
             if front and back:
                 pairs.append((front[:2000], back[:4000]))
-    except AiKeyRequired:
+    except AiRequestRejected:
         raise
     except Exception as exc:  # noqa: BLE001 - siempre hay plan B
         log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
@@ -265,9 +267,11 @@ async def generate_quiz(
     questions: list[dict] = []
     try:
         data = await ai_generate.generate_json(
+            db,
             current_user,
             _QUIZ_SYSTEM,
             f"Cuaderno: {notebook.title}\n\n{content[:8000]}",
+            source="repaso",
             max_tokens=2000,
         )
         title = str(data.get("title") or title)[:300]
@@ -284,7 +288,7 @@ async def generate_quiz(
                         "explanation": str(item.get("explanation", "")).strip(),
                     }
                 )
-    except AiKeyRequired:
+    except AiRequestRejected:
         raise
     except Exception as exc:  # noqa: BLE001
         log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)

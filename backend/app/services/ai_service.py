@@ -13,11 +13,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import crypto
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.base import utcnow
@@ -29,13 +27,9 @@ from app.models.schedule_block import ScheduleBlock
 from app.models.task import Task
 from app.models.timetable_entry import TimetableEntry
 from app.models.user import User
-from app.services import ai_tools
-from app.services.ai_errors import (
-    REMOTE_PROVIDERS,
-    AiKeyRequired,
-    log_provider_error,
-    provider_error_message,
-)
+from app.services import ai_gateway, ai_tools
+from app.services.ai_errors import AiRequestRejected, log_provider_error, provider_error_message
+from app.services.ai_gateway import AiProfile
 
 logger = get_logger(__name__)
 
@@ -91,119 +85,6 @@ class AiResult:
     source: str
     pending_action: dict[str, Any] | None = None
     events: list[str] = field(default_factory=list)
-
-
-@dataclass
-class AiProfile:
-    """Configuracion efectiva de IA para un usuario concreto (proveedor hibrido)."""
-
-    provider: str  # local | gemini | openai | claude | openrouter | custom
-    base_url: str
-    model: str
-    vision_model: str
-    api_key: str
-    temperature: float
-    timeout_seconds: int
-    tools_enabled: bool
-    max_tool_iterations: int
-
-    @property
-    def configured(self) -> bool:
-        """Listo para llamar al modelo? (los remotos exigen clave; local no)."""
-        if not self.base_url or not self.model:
-            return False
-        if self.provider in REMOTE_PROVIDERS and not self.api_key:
-            return False
-        return True
-
-
-def require_personal_key(profile: AiProfile) -> None:
-    if profile.provider in REMOTE_PROVIDERS and not profile.api_key:
-        raise AiKeyRequired()
-
-
-def resolve_profile(user: User) -> AiProfile:
-    """Resuelve que modelo/endpoint usar segun el proveedor elegido por el usuario.
-
-    Todos los proveedores se llaman con la API compatible con OpenAI:
-    - "local": Ollama u otro servidor propio (AI_BASE_URL del .env).
-    - "gemini": Google AI Studio (Gemini).
-    - "openai": ChatGPT (api.openai.com).
-    - "claude": Claude de Anthropic (capa compatible con OpenAI).
-    - "openrouter": una clave con acceso a casi todos los modelos.
-    - "custom": cualquier otro endpoint compatible indicado por el usuario.
-    La clave de API se guarda cifrada por usuario en `users.ai_api_key_encrypted`.
-    """
-    provider = (user.ai_provider or settings.ai_default_provider or "local").lower()
-    user_model = (user.ai_model or "").strip()
-    user_base = (user.ai_base_url or "").strip().rstrip("/")
-    api_key = crypto.decrypt(user.ai_api_key_encrypted) or ""
-
-    if provider == "custom":
-        return AiProfile(
-            provider="custom",
-            base_url=user_base,
-            model=user_model,
-            vision_model=user_model,
-            api_key=api_key,
-            temperature=settings.ai_temperature,
-            timeout_seconds=settings.ai_timeout_seconds,
-            tools_enabled=settings.ai_tools_enabled,
-            max_tool_iterations=settings.ai_max_tool_iterations,
-        )
-
-    presets: dict[str, tuple[str, str, str]] = {
-        "gemini": (
-            settings.ai_gemini_base_url,
-            settings.ai_gemini_model,
-            settings.ai_gemini_vision_model,
-        ),
-        "openai": (
-            settings.ai_openai_base_url,
-            settings.ai_openai_model,
-            settings.ai_openai_model,
-        ),
-        "claude": (
-            settings.ai_claude_base_url,
-            settings.ai_claude_model,
-            settings.ai_claude_model,
-        ),
-        "openrouter": (
-            settings.ai_openrouter_base_url,
-            settings.ai_openrouter_model,
-            settings.ai_openrouter_model,
-        ),
-    }
-
-    if provider in presets:
-        base_url, model, vision_model = presets[provider]
-        if user_model:
-            model = user_model
-            vision_model = user_model
-        return AiProfile(
-            provider=provider,
-            base_url=base_url,
-            model=model,
-            vision_model=vision_model,
-            api_key=api_key,
-            temperature=settings.ai_temperature,
-            timeout_seconds=settings.ai_timeout_seconds,
-            tools_enabled=settings.ai_tools_enabled,
-            max_tool_iterations=settings.ai_max_tool_iterations,
-        )
-
-    return AiProfile(
-        provider="local",
-        base_url=settings.ai_base_url,
-        model=settings.ai_model,
-        vision_model=settings.ai_vision_model,
-        api_key=settings.ai_api_key,
-        temperature=settings.ai_temperature,
-        timeout_seconds=settings.ai_timeout_seconds,
-        tools_enabled=settings.ai_tools_enabled,
-        max_tool_iterations=settings.ai_max_tool_iterations,
-    )
-
 
 
 async def build_context(db: AsyncSession, user: User) -> dict[str, Any]:
@@ -407,6 +288,8 @@ async def generate_reply(
     document_name: str | None = None,
     page_context: str | None = None,
     page_context_label: str | None = None,
+    *,
+    profile: AiProfile | None = None,
 ) -> AiResult:
     """Responde al usuario. Usa el modelo (con herramientas y vision) si esta
     disponible; si no, cae al motor heuristico.
@@ -420,8 +303,8 @@ async def generate_reply(
     Devuelve un AiResult con el texto, la fuente, una posible accion pendiente de
     confirmacion (borrados) y los eventos de tiempo real generados.
     """
-    profile = resolve_profile(user)
-    require_personal_key(profile)
+    profile = profile if profile is not None else await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     ctx = await build_context(db, user)
     system = f"{_SYSTEM_PROMPT}\n\nCONTEXTO DEL ESTUDIANTE:\n{render_context_text(ctx)}"
     system = _append_page_context(system, page_context, page_context_label)
@@ -452,6 +335,8 @@ async def generate_reply(
                     result = await _run_model_gemini(
                         db, user, profile, system, history, prompt, images
                     )
+                except AiRequestRejected:
+                    raise
                 except Exception as exc:  # noqa: BLE001 - se intenta la ruta OpenAI
                     log_provider_error(logger, profile.provider, exc)
                     result = await _run_model(
@@ -464,6 +349,8 @@ async def generate_reply(
             if result.reply:
                 return result
             logger.warning("El modelo devolvio una respuesta vacia; usando heuristico")
+        except AiRequestRejected:
+            raise
         except Exception as exc:  # noqa: BLE001 - degradacion controlada
             log_provider_error(logger, profile.provider, exc)
             if profile.provider == "gemini":
@@ -514,7 +401,7 @@ async def _run_model(
 
     Con imagenes usa el modelo de vision y las envia como `image_url`.
     """
-    model = profile.vision_model if image_data_urls else profile.model
+    operation = "imagen" if image_data_urls else "texto"
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
         *history,
@@ -524,8 +411,8 @@ async def _run_model(
     events: list[str] = []
     last_text = ""
 
-    for _ in range(max(1, profile.max_tool_iterations)):
-        msg = await _post_chat(profile, messages, model, tools)
+    request = ai_gateway.ChatRequest(messages, tools=tools, use_vision_model=bool(image_data_urls))
+    async for msg in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
         last_text = (msg.get("content") or "").strip()
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
@@ -566,46 +453,6 @@ async def _run_model(
     )
 
 
-async def _post_chat(
-    profile: AiProfile,
-    messages: list[dict[str, Any]],
-    model: str,
-    tools: list[dict[str, Any]] | None,
-) -> dict[str, Any]:
-    """Llama a /chat/completions y devuelve el mensaje del asistente.
-
-    Si el modelo no soporta herramientas (error 400), reintenta sin ellas.
-    """
-    url = profile.base_url.rstrip("/") + "/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if profile.api_key:
-        headers["Authorization"] = f"Bearer {profile.api_key}"
-
-    async def _send(include_tools: bool) -> httpx.Response:
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": profile.temperature,
-            "stream": False,
-        }
-        if include_tools and tools:
-            payload["tools"] = tools
-            payload["tool_choice"] = "auto"
-        async with httpx.AsyncClient(timeout=profile.timeout_seconds) as client:
-            return await client.post(url, json=payload, headers=headers)
-
-    response = await _send(bool(tools))
-    if response.status_code == 400 and tools:
-        logger.info("El modelo no acepta herramientas; reintentando sin ellas")
-        response = await _send(False)
-    response.raise_for_status()
-    data = response.json()
-    choices = data.get("choices") or []
-    if not choices:
-        return {}
-    return choices[0].get("message", {}) or {}
-
-
 # --------------------------------------------------------------------------- #
 # Gemini nativo (inlineData)
 # --------------------------------------------------------------------------- #
@@ -618,14 +465,6 @@ _GEMINI_TYPES = {
     "array": "ARRAY",
     "null": "NULL",
 }
-
-
-def _gemini_native_url(profile: AiProfile, model: str) -> str:
-    """Convierte la base compatible con OpenAI en el endpoint nativo de Gemini."""
-    base = profile.base_url.rstrip("/")
-    if base.endswith("/openai"):
-        base = base[: -len("/openai")]
-    return f"{base}/models/{model}:generateContent"
 
 
 def _split_data_url(data_url: str) -> tuple[str, str]:
@@ -712,14 +551,14 @@ async def _run_model_gemini(
     image_data_urls: list[str],
 ) -> AiResult:
     """Bucle de tool-calling con la API nativa de Gemini e `inlineData`."""
-    model = profile.vision_model if image_data_urls else profile.model
+    operation = "imagen" if image_data_urls else "texto"
     contents = _gemini_contents(history, message, image_data_urls)
     tools = _gemini_tools(ai_tools.tool_schemas()) if profile.tools_enabled else None
     events: list[str] = []
     last_text = ""
 
-    for _ in range(max(1, profile.max_tool_iterations)):
-        content = await _post_gemini(profile, model, system, contents, tools)
+    request = ai_gateway.GeminiRequest(system, contents, tools)
+    async for content in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
         parts = [
             part for part in (content.get("parts") or []) if isinstance(part, dict)
         ]
@@ -771,44 +610,6 @@ async def _run_model_gemini(
         "ai",
         events=events,
     )
-
-
-async def _post_gemini(
-    profile: AiProfile,
-    model: str,
-    system: str,
-    contents: list[dict[str, Any]],
-    tools: list[dict[str, Any]] | None,
-) -> dict[str, Any]:
-    """Llama a models/{model}:generateContent y devuelve el contenido del modelo."""
-    url = _gemini_native_url(profile, model)
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": profile.api_key,
-    }
-
-    async def _send(include_tools: bool) -> httpx.Response:
-        payload: dict[str, Any] = {
-            "systemInstruction": {"parts": [{"text": system}]},
-            "contents": contents,
-            "generationConfig": {"temperature": profile.temperature},
-        }
-        if include_tools and tools:
-            payload["tools"] = tools
-            payload["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
-        async with httpx.AsyncClient(timeout=profile.timeout_seconds) as client:
-            return await client.post(url, json=payload, headers=headers)
-
-    response = await _send(bool(tools))
-    if response.status_code == 400 and tools:
-        logger.info("Gemini no acepta herramientas; reintentando sin ellas")
-        response = await _send(False)
-    response.raise_for_status()
-    data = response.json()
-    candidates = data.get("candidates") or []
-    if not candidates:
-        return {}
-    return candidates[0].get("content", {}) or {}
 
 
 _QUESTION_STOPWORDS = {
