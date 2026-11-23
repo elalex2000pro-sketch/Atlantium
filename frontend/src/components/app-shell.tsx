@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Wand2 } from "lucide-react";
 
 import { useAuth } from "@/components/auth-provider";
 import { ContextPanel } from "@/components/context-panel";
@@ -50,6 +50,9 @@ const OnboardingModal = lazy(() =>
 const IAStudio = lazy(() =>
   import("@/components/ia-studio").then((module) => ({ default: module.IAStudio })),
 );
+const QuickAiPanel = lazy(() =>
+  import("@/components/studio/quick-ai-panel").then((module) => ({ default: module.QuickAiPanel })),
+);
 
 const HEADER_CONTROL =
   "flex items-center justify-center rounded-full border border-white/20 bg-white/50 p-2 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/[0.07]";
@@ -72,7 +75,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const reduceMotion = animationLevel === "reduced";
   const isPublic = pathname === "/login";
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMode, setAiMode] = useState<"quick" | "studio" | null>(null);
+  const aiDialog = useRef<HTMLElement>(null);
+  const openQuickAi = () => setAiMode("quick");
+  const closeAi = () => setAiMode(null);
 
   // Guard de rutas: sin sesión -> /login.
   useEffect(() => {
@@ -89,23 +95,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // El drawer de IA se abre desde cualquier pantalla mediante un evento.
   useEffect(() => {
-    const open = () => setAiOpen(true);
+    const open = () => setAiMode("studio");
     window.addEventListener(AI_DRAWER_EVENT, open);
     return () => window.removeEventListener(AI_DRAWER_EVENT, open);
   }, []);
 
   useEffect(() => {
-    if (!aiOpen) return;
+    if (!aiMode) return;
+    const previousFocus = document.activeElement;
+    aiDialog.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAiOpen(false);
+      if (event.key === "Escape") setAiMode(null);
     };
     const releaseScrollLock = lockBodyScroll();
     window.addEventListener("keydown", onKey);
     return () => {
       releaseScrollLock();
       window.removeEventListener("keydown", onKey);
+      if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true });
     };
-  }, [aiOpen]);
+  }, [aiMode]);
 
   const finishOnboarding = useCallback(() => {
     markOnboardingCompleted();
@@ -152,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           sidebarLayout.side === "right" && "md:flex-row-reverse",
         )}
       >
-        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} />
+        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} onOpenAi={openQuickAi} />
 
         <div className="flex min-w-0 flex-1 flex-col bg-transparent">
           {/* Cabecera móvil: el rail de escritorio empieza en `md`. */}
@@ -184,6 +193,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </Link>
                 <div className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Abrir panel de IA"
+                    aria-haspopup="dialog"
+                    onClick={openQuickAi}
+                    className="h-10 w-10 rounded-full text-muted-foreground"
+                  >
+                    <Wand2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
                   <Suspense fallback={<span className="block h-9 w-9" />}>
                     <InstallAppButton compact />
                   </Suspense>
@@ -302,25 +322,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <GamificationThemeSync />
 
       <AnimatePresence>
-        {aiOpen ? (
+        {aiMode ? (
           <motion.div
             key="ai-drawer"
             className="fixed inset-0 z-[95] flex justify-end bg-slate-950/35 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setAiOpen(false)}
+            onClick={closeAi}
           >
             <motion.aside
+              ref={aiDialog}
               role="dialog"
               aria-modal="true"
-              aria-label="IA Studio"
-              className="flex h-dvh w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-l border-white/15 bg-literal-f4f4f7/92 shadow-[shadow:var(--elevation-app-shell-4)] backdrop-blur-3xl dark:border-white/10 dark:bg-literal-0b0f18/94"
+              aria-label={aiMode === "quick" ? "Panel de IA" : "IA Studio"}
+              tabIndex={-1}
+              className="flex h-dvh w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-l border-white/15 bg-literal-f4f4f7/92 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10 dark:bg-literal-0b0f18/94"
               initial={{ x: 64, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 64, opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key !== "Tab") return;
+                const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+                )).filter((item) => item.getClientRects().length > 0);
+                const first = items[0];
+                const last = items.at(-1);
+                if (!first || !last || (event.shiftKey
+                  ? document.activeElement === first || document.activeElement === aiDialog.current
+                  : document.activeElement === last)) {
+                  event.preventDefault();
+                  (event.shiftKey ? last : first)?.focus();
+                }
+              }}
             >
               <Suspense
                 fallback={
@@ -329,7 +365,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 }
               >
-                <IAStudio embedded onClose={() => setAiOpen(false)} />
+                {aiMode === "quick" ? <QuickAiPanel onClose={closeAi} /> : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>
           </motion.div>
