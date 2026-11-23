@@ -328,8 +328,7 @@ export function StudyGames({ cards }: { cards: Flashcard[] }) {
           Necesitas al menos 2 tarjetas
         </h2>
         <p className="mx-auto mt-1 max-w-md text-[12px] leading-5 text-slate-500 dark:text-white/40">
-          Crea o genera tarjetas en un mazo y vuelve aquí. Los minijuegos usan tus
-          propias preguntas y respuestas.
+          Crea o genera tarjetas en un mazo y vuelve para jugar.
         </p>
       </section>
     );
@@ -634,15 +633,11 @@ export function StudyGames({ cards }: { cards: Flashcard[] }) {
             <Gamepad2 className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#0066FF] dark:text-[#8ab9ff]">
-              Aprender jugando
-            </p>
             <h2 className="mt-0.5 text-[22px] font-semibold tracking-[-0.035em] text-slate-800 dark:text-white/90">
               Minijuegos de estudio
             </h2>
             <p className="mt-1 max-w-xl text-[12px] leading-5 text-slate-500 dark:text-white/40">
-              Tus {playableCards.length} tarjetas se convierten en retos rápidos.
-              Cada ronda completada suma EXP y acerca la siguiente recompensa.
+              Juega con tus {playableCards.length} tarjetas y gana EXP en cada ronda completada.
             </p>
           </div>
         </div>

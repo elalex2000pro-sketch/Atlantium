@@ -187,16 +187,12 @@ export default function ReviewPage() {
       <header className="app-glass rounded-3xl p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#0066FF] dark:text-[#8ab9ff]">
-              Memoria a largo plazo
-            </p>
             <h1 className="mt-1 flex items-center gap-2 text-[28px] font-semibold tracking-[-0.045em] text-slate-900 dark:text-white/95">
               <Brain className="h-7 w-7 text-[#0066FF]" />
               Repaso
             </h1>
             <p className="mt-1 max-w-xl text-[12px] leading-5 text-slate-500 dark:text-white/40">
-              Mazos de tarjetas con repaso espaciado. Abre un mazo, gira la tarjeta y decide cuándo
-              quieres volver a verla.
+              Abre un mazo y decide cuándo repasar cada tarjeta.
             </p>
           </div>
           <div className="flex rounded-full border border-slate-300/40 bg-slate-100/60 p-0.5 shadow-inner backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]">

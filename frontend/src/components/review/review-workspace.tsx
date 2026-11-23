@@ -242,7 +242,7 @@ export function ReviewWorkspace({
   return (
     <div className="space-y-3">
       {!loading && <p role="status" className="text-sm text-muted-foreground">
-        {!hasMaterial ? "Escribe apuntes en el cuaderno o añade una fuente para empezar." : hasNotes && selected.length === 0 ? "Al enviar una pregunta o pulsar una acción de Studio, se usarán los apuntes guardados de este cuaderno." : "Se usarán los adjuntos seleccionados al enviar una pregunta o pulsar una acción de Studio."}
+        {!hasMaterial ? "Escribe apuntes en el cuaderno o añade una fuente para empezar." : hasNotes && selected.length === 0 ? "El chat y Studio usarán los apuntes guardados del cuaderno." : "El chat y Studio usarán los adjuntos seleccionados."}
       </p>}
       <p className="text-sm text-muted-foreground">Chat y Studio necesitan un modelo de IA configurado en <Link href="/settings" className="underline">Ajustes</Link>.</p>
       <div
