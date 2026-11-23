@@ -6,55 +6,47 @@ import json
 import re
 from typing import Any
 
-import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.user import User
-from app.services.ai_service import require_personal_key, resolve_profile
-
+from app.services import ai_gateway
 
 class AiNotConfigured(RuntimeError):
     """El usuario todavia no ha configurado una IA utilizable."""
 
 
 async def generate_json(
+    db: AsyncSession,
     user: User,
     system: str,
     prompt: str,
     *,
+    source: ai_gateway.Source,
     max_tokens: int = 1200,
     temperature: float = 0.4,
 ) -> dict[str, Any]:
     """Pide a la IA del usuario un objeto JSON valido."""
-    profile = resolve_profile(user)
-    require_personal_key(profile)
+    profile = await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     if not profile.configured or not profile.api_key:
         raise AiNotConfigured(
             "Configura tu IA en Ajustes (Gemini, ChatGPT, Claude u OpenRouter) para usar esta funcion."
         )
 
-    payload = {
-        "model": profile.model,
-        "messages": [
+    msg = await ai_gateway.request_ai(
+        db, user, source, "texto",
+        ai_gateway.ChatRequest([
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
-        ],
-        "temperature": temperature,
-        "stream": False,
-        "max_tokens": max_tokens,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {profile.api_key}"}
-    url = profile.base_url.rstrip("/") + "/chat/completions"
-    async with httpx.AsyncClient(timeout=max(profile.timeout_seconds, 90)) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-    content = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
+        ], temperature=temperature, max_tokens=max_tokens, minimum_timeout=90),
+        profile=profile,
+    )
+    content = msg.get("content") or ""
     return _extract_json(content)
 
 
 async def generate_json_with_image(
+    db: AsyncSession,
     user: User,
     system: str,
     prompt: str,
@@ -64,8 +56,8 @@ async def generate_json_with_image(
     max_tokens: int = 1500,
 ) -> dict[str, Any]:
     """Pide a un modelo con vision que devuelva JSON a partir de una imagen."""
-    profile = resolve_profile(user)
-    require_personal_key(profile)
+    profile = await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     if not profile.configured or not profile.api_key:
         raise AiNotConfigured(
             "Para leer una foto necesitas una IA con vision configurada en Ajustes (OpenAI o Gemini)."
@@ -84,20 +76,12 @@ async def generate_json_with_image(
             ],
         },
     ]
-    payload = {
-        "model": profile.model,
-        "messages": messages,
-        "temperature": 0.2,
-        "stream": False,
-        "max_tokens": max_tokens,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {profile.api_key}"}
-    url = profile.base_url.rstrip("/") + "/chat/completions"
-    async with httpx.AsyncClient(timeout=max(profile.timeout_seconds, 120)) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-    content = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
+    msg = await ai_gateway.request_ai(
+        db, user, "horario", "imagen",
+        ai_gateway.ChatRequest(messages, temperature=0.2, max_tokens=max_tokens, minimum_timeout=120),
+        profile=profile,
+    )
+    content = msg.get("content") or ""
     return _extract_json(content)
 
 
@@ -122,23 +106,13 @@ def _extract_json(content: str) -> dict[str, Any]:
 
 
 async def transcribe_audio(
-    user: User, filename: str, content: bytes, content_type: str
+    db: AsyncSession, user: User, filename: str, content: bytes, content_type: str
 ) -> str:
     """Transcribe audio con un endpoint compatible con OpenAI Whisper."""
-    profile = resolve_profile(user)
-    require_personal_key(profile)
-    if not profile.api_key:
-        raise AiNotConfigured(
-            "La transcripcion necesita una clave de OpenAI (o un servicio compatible con Whisper) en Ajustes."
-        )
-    url = profile.base_url.rstrip("/") + "/audio/transcriptions"
-    headers = {"Authorization": f"Bearer {profile.api_key}"}
-    files = {"file": (filename, content, content_type or "audio/mpeg")}
-    data = {"model": settings.ai_transcribe_model, "language": "es"}
-    async with httpx.AsyncClient(timeout=300) as client:
-        response = await client.post(url, headers=headers, files=files, data=data)
-        response.raise_for_status()
-        payload = response.json()
+    payload = await ai_gateway.request_ai(
+        db, user, "transcripcion", "audio",
+        ai_gateway.AudioRequest(filename, content, content_type or "audio/mpeg"),
+    )
     text = (payload.get("text") or "").strip()
     if not text:
         raise RuntimeError("La transcripcion llego vacia")

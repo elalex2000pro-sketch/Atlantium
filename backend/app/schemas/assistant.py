@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
+
+AiProvider = Literal["local", "gemini", "openai", "claude", "openrouter", "custom"]
 
 
 class MessageAttachment(BaseModel):
@@ -78,14 +81,16 @@ class AssistantStatus(BaseModel):
     base_url: str
     provider: str = "local"  # local | gemini
     has_api_key: bool = False
+    providers_with_key: list[str] = Field(default_factory=list)
+    custom_base_url: str = ""
 
 
 class AiProfileUpdate(BaseModel):
     """Cambio de proveedor de IA desde Ajustes."""
 
-    provider: str = Field(..., pattern="^(local|gemini|openai|claude|openrouter|custom)$")
+    provider: AiProvider
     # Clave de API del proveedor. Si no se envia, se conserva la guardada.
-    api_key: str | None = Field(default=None, max_length=500)
+    api_key: SecretStr | None = None
     # Modelo concreto (opcional; vacio = modelo por defecto del proveedor).
     model: str | None = Field(default=None, max_length=120)
     # Endpoint personalizado (solo para "custom"; los presets ya lo definen).

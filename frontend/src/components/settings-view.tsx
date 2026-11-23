@@ -136,7 +136,7 @@ const AI_PROVIDER_INFO: Record<string, { keyLabel: string; keyHelp: string }> = 
   },
   gemini: {
     keyLabel: "Clave de API de Google AI Studio",
-    keyHelp: "Consíguela gratis en aistudio.google.com → API keys. Se guarda cifrada.",
+    keyHelp: "Tu clave se guarda cifrada.",
   },
   openai: {
     keyLabel: "Clave de API de OpenAI (ChatGPT)",
@@ -284,16 +284,23 @@ export function SettingsView() {
     setTelegramChat(reminders.telegram_chat_id ?? "");
   }, [reminders]);
 
-  // Sincroniza el formulario de IA cuando carga (o cambia) el perfil.
+  const savedAiProvider = aiProfile?.provider;
+  const savedAiModel = aiProfile?.model ?? "";
+  const savedCustomUrl = aiProfile?.custom_base_url ??
+    (savedAiProvider === "custom" ? aiProfile?.base_url ?? "" : "");
+  const aiKeySaved =
+    aiProfile?.providers_with_key?.includes(aiProvider) ??
+    (aiProfile?.provider === aiProvider && aiProfile.has_api_key);
+
+  // Borrar una clave no cambia el proveedor seleccionado en el formulario.
   useEffect(() => {
-    if (!aiProfile) return;
-    const presets = AI_MODEL_PRESETS[aiProfile.provider] ?? [];
-    const model = aiProfile.model ?? "";
-    setAiProvider(aiProfile.provider);
-    setAiModel(model);
-    setAiModelCustom(Boolean(model) && !presets.some((option) => option.value === model));
-    setAiBaseUrl(aiProfile.provider === "custom" ? (aiProfile.base_url ?? "") : "");
-  }, [aiProfile]);
+    if (!savedAiProvider) return;
+    const presets = AI_MODEL_PRESETS[savedAiProvider] ?? [];
+    setAiProvider(savedAiProvider);
+    setAiModel(savedAiModel);
+    setAiModelCustom(Boolean(savedAiModel) && !presets.some((option) => option.value === savedAiModel));
+    setAiBaseUrl(savedCustomUrl);
+  }, [savedAiProvider, savedAiModel, savedCustomUrl]);
 
   // Mantiene el formulario sincronizado con la pregunta guardada en el perfil.
   useEffect(() => {
@@ -442,7 +449,7 @@ export function SettingsView() {
         provider: aiProvider,
         api_key: aiKey.trim() ? aiKey.trim() : null,
         model: aiModel.trim(),
-        base_url: aiProvider === "custom" ? aiBaseUrl.trim() : "",
+        base_url: aiProvider === "custom" ? aiBaseUrl.trim() : undefined,
       });
       setAiProfile(updated);
       setAiKey("");
@@ -451,6 +458,22 @@ export function SettingsView() {
       );
     } catch (e) {
       setNotice(e instanceof ApiError ? e.message : "Error al guardar la IA");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function removeAiKey() {
+    const label = AI_PROVIDER_LABEL[aiProvider] ?? aiProvider;
+    if (!window.confirm(`¿Borrar la clave guardada de ${label}?`)) return;
+    setAiBusy(true);
+    setNotice(null);
+    try {
+      setAiProfile(await api.deleteAiKey(aiProvider));
+      setAiKey("");
+      setNotice(`Clave de ${label} borrada.`);
+    } catch (error) {
+      setNotice(error instanceof ApiError ? error.message : "No se pudo borrar la clave de IA");
     } finally {
       setAiBusy(false);
     }
@@ -1126,9 +1149,16 @@ export function SettingsView() {
                         <button
                           key={value}
                           type="button"
+                          disabled={aiBusy}
                           onClick={() => {
+                            if (value !== aiProvider) setAiKey("");
                             setAiProvider(value);
-                            if (value !== aiProfile?.provider) {
+                            if (value === savedAiProvider) {
+                              const presets = AI_MODEL_PRESETS[value] ?? [];
+                              setAiModel(savedAiModel);
+                              setAiModelCustom(Boolean(savedAiModel) &&
+                                !presets.some((option) => option.value === savedAiModel));
+                            } else if (value !== aiProvider) {
                               setAiModel("");
                               setAiModelCustom(false);
                             }
@@ -1156,7 +1186,7 @@ export function SettingsView() {
                       id="aiKey"
                       type="password"
                       placeholder={
-                        aiProfile?.has_api_key && aiProfile.provider === aiProvider
+                        aiKeySaved
                           ? "••••••••  (guardada)"
                           : "Pega aquí tu clave"
                       }
@@ -1164,6 +1194,11 @@ export function SettingsView() {
                       onChange={(event) => setAiKey(event.target.value)}
                       className="h-8 text-[12px]"
                     />
+                    {aiKeySaved && (
+                      <Button type="button" size="sm" variant="outline" disabled={aiBusy} onClick={removeAiKey}>
+                        Borrar clave
+                      </Button>
+                    )}
                     <p className="text-[10px] leading-4 text-slate-500 dark:text-white/35">
                       {AI_PROVIDER_INFO[aiProvider]?.keyHelp}
                     </p>

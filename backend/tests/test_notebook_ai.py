@@ -2,12 +2,13 @@
 import asyncio
 import json
 import uuid
+from unittest.mock import AsyncMock
 
 from test_peer_classwork import client, setup
 from app.db.session import get_db
 from app.models.book import Book, BookSection
 from app.models.notebook import NotebookSource
-from app.services import ai_service, notebook_ai
+from app.services import ai_gateway, notebook_ai
 
 
 def seed(c, owner):
@@ -24,8 +25,8 @@ def seed(c, owner):
 
 
 def fake(monkeypatch, data):
-    async def post(*args): return {'content':json.dumps(data)}
-    monkeypatch.setattr(ai_service,'_post_chat',post)
+    async def post(*args, **kwargs): return {'content':json.dumps(data)}
+    monkeypatch.setattr(ai_gateway,'request_ai',post)
 
 
 def test_own_notes_answer_and_studio_without_attached_sources(client, monkeypatch):
@@ -33,10 +34,10 @@ def test_own_notes_answer_and_studio_without_attached_sources(client, monkeypatc
     note=c.post('/api/v1/notebooks',headers=a,json={'title':'Mis apuntes','content':'La mitocondria produce ATP mediante respiración celular.'}).json()
     path='/api/v1/notebooks/'+note['id'];payload={'question':'¿Qué produce la mitocondria?','source_ids':[]}
     captured=[]
-    async def post(profile,messages,*args):
-        captured.append(messages)
+    async def post(db,user,source,operation,request,**kwargs):
+        captured.append(request.messages)
         return {'content':json.dumps({'supported':True,'answer':'Produce ATP [1].'})}
-    monkeypatch.setattr(ai_service,'_post_chat',post)
+    monkeypatch.setattr(ai_gateway,'request_ai',post)
     r=c.post(path+'/chat',headers=a,json=payload);assert r.status_code==200,r.text
     result=r.json();assert result['answer']=='Produce ATP [1].'
     assert result['citations'][0]['fragment']==note['content']
@@ -61,9 +62,9 @@ def test_own_notes_missing_ai_explains_settings_and_makes_no_call(client,monkeyp
     from types import SimpleNamespace
     c=client;a,_,_,_=setup(c)
     note=c.post('/api/v1/notebooks',headers=a,json={'title':'Apuntes','content':'La mitocondria produce ATP.'}).json()
-    monkeypatch.setattr(ai_service,'resolve_profile',lambda user:SimpleNamespace(provider="local", configured=False))
+    monkeypatch.setattr(ai_gateway,'load_profile',AsyncMock(return_value=SimpleNamespace(provider="local", configured=False)))
     async def forbidden(*args):raise AssertionError('No debe llamar al proveedor sin configurar')
-    monkeypatch.setattr(ai_service,'_post_chat',forbidden)
+    monkeypatch.setattr(ai_gateway,'request_ai',forbidden)
     result=c.post('/api/v1/notebooks/'+note['id']+'/chat',headers=a,json={'question':'Crea tarjetas','source_ids':[]}).json()
     assert 'Ajustes' in result['answer'] and 'Chat y Studio' in result['answer']
     assert result['actions']==[] and c.get('/api/v1/flashcards',headers=a).json()==[]
@@ -122,12 +123,12 @@ def test_real_tools_fallback_dedup_and_honest_failure(client,monkeypatch):
 def test_native_loop_and_failure(client,monkeypatch):
     c=client;a,_,_,_=setup(c);path,source=seed(c,a)
     calls=[]
-    async def post(profile,messages,model,tools):
-        calls.append(messages.copy())
+    async def post(db,user,source,operation,request,**kwargs):
+        calls.append(request.messages.copy())
         if len(calls)==1:
             return {'role':'assistant','content':'', 'tool_calls':[{'id':'call1','type':'function','function':{'name':'create_flashcards','arguments':json.dumps({'cards':[{'front':'ATP','back':'Respiración [1]'}]})}}]}
         return {'content':json.dumps({'supported':True,'answer':'He creado 50 tarjetas [1]'})}
-    monkeypatch.setattr(ai_service,'_post_chat',post)
+    monkeypatch.setattr(ai_gateway,'request_ai',post)
     result=c.post(path+'/chat',headers=a,json={'question':'Crea tarjetas','source_ids':[source]}).json()
     assert result['actions'][0]['count']==1 and '50' not in result['answer']
     assert calls[1][-1]['role']=='tool'
@@ -159,7 +160,8 @@ def test_provider_without_tools_retries_json(monkeypatch):
         return httpx.Response(200,json={'choices':[{'message':{'content':'{"actions":[]}'}}]})
     original=httpx.AsyncClient
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(handle),**kwargs))
-    profile=SimpleNamespace(base_url='https://example.invalid/v1',api_key='',temperature=0,timeout_seconds=5)
-    result=asyncio.run(ai_service._post_chat(profile,[{'role':'user','content':'JSON'}],'test',notebook_ai.tool_schemas()))
+    profile=ai_gateway.AiProfile('local','https://example.invalid/v1','test','test','',0,5,True,1)
+    payload=ai_gateway.ChatRequest([{'role':'user','content':'JSON'}],tools=notebook_ai.tool_schemas())
+    result=asyncio.run(ai_gateway.request_ai(None,None,'notas','texto',payload,profile=profile))
     assert len(requests)==2 and 'tools' not in requests[1]
     assert json.loads(result['content'])=={'actions':[]}

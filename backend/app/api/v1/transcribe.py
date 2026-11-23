@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.api.deps import CurrentUser
+from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.services import ai_generate
-from app.services.ai_errors import AiKeyRequired, log_provider_error
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transcribe", tags=["transcribe"])
@@ -18,7 +18,7 @@ _EXTENSIONS = (".mp3", ".m4a", ".wav", ".ogg", ".webm", ".mp4", ".mpeg", ".mpga"
 
 @router.post("")
 async def transcribe(
-    current_user: CurrentUser, file: UploadFile = File(...)
+    current_user: CurrentUser, db: DbSession, file: UploadFile = File(...)
 ) -> dict[str, str]:
     filename = file.filename or "audio.mp3"
     if not filename.lower().endswith(_EXTENSIONS):
@@ -37,11 +37,9 @@ async def transcribe(
 
     try:
         text = await ai_generate.transcribe_audio(
-            current_user, filename, content, file.content_type or "audio/mpeg"
+            db, current_user, filename, content, file.content_type or "audio/mpeg"
         )
-    except ai_generate.AiNotConfigured as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except AiKeyRequired:
+    except AiRequestRejected:
         raise
     except Exception as exc:  # noqa: BLE001
         log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)

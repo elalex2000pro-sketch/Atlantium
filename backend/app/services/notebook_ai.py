@@ -24,8 +24,8 @@ from app.models.book import Book, BookSection
 from app.models.document import Document
 from app.models.flashcard import Flashcard
 from app.models.quiz import Quiz
-from app.services import ai_service, ai_studio_service, ai_tools
-from app.services.ai_errors import log_provider_error
+from app.services import ai_gateway, ai_studio_service, ai_tools
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -200,8 +200,8 @@ def tool_schemas():
 
 
 async def chat(db, notebook, user, payload):
-    profile = ai_service.resolve_profile(user)
-    ai_service.require_personal_key(profile)
+    profile = await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     def progress(stage):
         if payload.turn_id:
             notify(user.id, "notebook_chat_progress", {
@@ -231,9 +231,11 @@ async def chat(db, notebook, user, payload):
     actions, answer, used = [], NO_ANSWER, []
     if context and profile.configured:
         try:
-            for _ in range(max(1, profile.max_tool_iterations)):
-                progress("answering")
-                msg = await ai_service._post_chat(profile,messages,profile.model,tool_schemas() if profile.tools_enabled else None)
+            request = ai_gateway.ChatRequest(messages, tools=tool_schemas() if profile.tools_enabled else None)
+            async for msg in ai_gateway.tool_turns(
+                db, user, "notas", "texto", request, profile=profile,
+                before_turn=lambda: progress("answering"),
+            ):
                 calls = msg.get('tool_calls') or []
                 raw = msg.get('content') or ''
                 data = {}
@@ -262,6 +264,8 @@ async def chat(db, notebook, user, payload):
                 if data.get('supported') is True and nums and not re.search(r'\b(?:cread[oa]s?|guardad[oa]s?|creé|guardé|generé|(?:he|hemos|se ha|se han)\s+(?:generado|añadido))\b', candidate, re.I):
                     answer, used = candidate, [c for c in citations if c['number'] in nums]
                 break
+        except AiRequestRejected:
+            raise
         except Exception as exc:
             log_provider_error(logger, profile.provider, exc)
             answer = 'No se pudo consultar el modelo de IA. Inténtalo de nuevo.'

@@ -167,7 +167,7 @@ async def test_gemini_ejecuta_el_function_call_y_crea_el_evento(
             }
         return {"parts": [{"text": "He añadido el examen al calendario."}]}
 
-    monkeypatch.setattr(ai_service, "_post_gemini", fake_post_gemini)
+    monkeypatch.setattr(ai_service.ai_gateway, "request_ai", fake_post_gemini)
     result = await ai_service._run_model_gemini(
         db,  # type: ignore[arg-type]
         _user(),  # type: ignore[arg-type]

@@ -7,7 +7,9 @@ from typing import Any
 
 import pytest
 
-from app.services import ai_service
+from app.services import ai_gateway, ai_service
+from test_chat_flow import account
+from test_peer_classwork import client
 from app.services.ai_service import AiProfile, heuristic_document_reply, heuristic_reply
 
 
@@ -32,15 +34,12 @@ async def test_run_model_envia_historial_y_mensaje_actual(
     captured: dict[str, Any] = {}
 
     async def fake_post_chat(
-        _profile: AiProfile,
-        messages: list[dict[str, Any]],
-        model: str,
-        tools: list[dict[str, Any]] | None,
+        _db, _user, _source, _operation, request, *, profile: AiProfile,
     ) -> dict[str, Any]:
-        captured.update(messages=messages, model=model, tools=tools)
+        captured.update(messages=request.messages, model=profile.model, tools=request.tools)
         return {"content": "respuesta del modelo"}
 
-    monkeypatch.setattr(ai_service, "_post_chat", fake_post_chat)
+    monkeypatch.setattr(ai_gateway, "request_ai", fake_post_chat)
 
     result = await ai_service._run_model(
         None,  # type: ignore[arg-type]
@@ -85,7 +84,7 @@ def test_fallback_usa_la_pregunta_y_no_repite_el_mismo_plan():
 def test_resolve_profile_usa_los_modelos_gemini_elegidos(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(ai_service.crypto, "decrypt", lambda _value: "clave")
+    monkeypatch.setattr(ai_gateway.crypto, "decrypt", lambda _value: "clave")
 
     for model in ("gemini-1.5-flash", "gemini-1.5-pro"):
         user = SimpleNamespace(
@@ -94,45 +93,21 @@ def test_resolve_profile_usa_los_modelos_gemini_elegidos(
             ai_base_url=None,
             ai_api_key_encrypted="cifrada",
         )
-        resolved = ai_service.resolve_profile(user)
+        resolved = ai_gateway.resolve_profile(user, "cifrada")
         assert resolved.provider == "gemini"
         assert resolved.model == model
         assert resolved.vision_model == model
 
 
-@pytest.mark.asyncio
-async def test_actualizar_perfil_cambia_el_modelo(monkeypatch: pytest.MonkeyPatch):
-    from app.api.v1.assistant import update_profile
-    from app.schemas.assistant import AiProfileUpdate
-
-    monkeypatch.setattr(ai_service.crypto, "decrypt", lambda _value: "clave")
-    user = SimpleNamespace(
-        ai_provider="gemini",
-        ai_model="gemini-2.5-flash",
-        ai_base_url=None,
-        ai_api_key_encrypted="cifrada",
-        email="estudiante@example.com",
-    )
-
-    class FakeDb:
-        def add(self, _obj: object) -> None:
-            return None
-
-        async def commit(self) -> None:
-            return None
-
-        async def refresh(self, _obj: object) -> None:
-            return None
-
-    updated = await update_profile(
-        AiProfileUpdate(provider="gemini", model="gemini-1.5-pro"),
-        user,  # type: ignore[arg-type]
-        FakeDb(),  # type: ignore[arg-type]
-    )
-
-    assert user.ai_model == "gemini-1.5-pro"
-    assert updated.model == "gemini-1.5-pro"
-    assert updated.provider == "gemini"
+def test_actualizar_perfil_cambia_el_modelo(client):
+    headers, _, _ = account(client, "modelo")
+    url = "/api/v1/assistant/profile"
+    initial = client.put(url, headers=headers, json={"provider": "gemini", "api_key": "simulada"})
+    assert initial.status_code == 200
+    updated = client.put(url, headers=headers, json={"provider": "gemini", "model": "gemini-1.5-pro"})
+    assert updated.status_code == 200
+    assert updated.json()["model"] == "gemini-1.5-pro"
+    assert updated.json()["has_api_key"]
 
 
 def test_contexto_del_pdf_se_inyecta_solo_en_el_prompt():

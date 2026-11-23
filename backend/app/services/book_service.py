@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
-import httpx
 from pypdf import PdfReader
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,8 +33,8 @@ from app.models.book import Book, BookSection
 from app.models.document import Document
 from app.models.user import User
 from app.schemas.book import BookCitation
-from app.services.ai_errors import log_provider_error
-from app.services.ai_service import AiProfile, require_personal_key, resolve_profile
+from app.services import ai_gateway
+from app.services.ai_errors import AiRequestRejected, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -587,14 +586,13 @@ async def process_book(book_id: uuid.UUID) -> None:
             book.error_message = None
             await db.commit()
             logger.info(
-                "Libro procesado: %s (%d secciones, %d caracteres)",
-                book.title,
+                "Libro procesado (%d secciones, %d caracteres)",
                 book.total_sections,
                 book.total_chars,
             )
             notify(book.user_id, "books", {"action": "ready", "id": str(book.id)})
         except Exception as exc:  # noqa: BLE001 - se informa al usuario
-            logger.warning("No se pudo procesar el libro %s: %s", book_id, exc)
+            logger.warning("No se pudo procesar el libro: %s", type(exc).__name__)
             await db.rollback()
             book = await db.get(Book, book_id)
             if book is not None:
@@ -754,32 +752,23 @@ def _extractive_answer(question: str, sections: list[BookSection]) -> tuple[str,
     return "\n\n".join(selected), citations
 
 
-async def _call_llm(profile: AiProfile, system: str, prompt: str) -> str | None:
+async def _call_llm(
+    db: AsyncSession, user: User, profile: ai_gateway.AiProfile, system: str, prompt: str,
+) -> str | None:
     if not profile.configured:
         return None
-    payload = {
-        "model": profile.model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.15,
-        "stream": False,
-    }
-    headers = {"Content-Type": "application/json"}
-    if profile.api_key:
-        headers["Authorization"] = f"Bearer {profile.api_key}"
     try:
-        async with httpx.AsyncClient(timeout=min(profile.timeout_seconds, 90)) as client:
-            response = await client.post(
-                profile.base_url.rstrip("/") + "/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            data = response.json()
-        content = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
-        return content.strip() or None
+        msg = await ai_gateway.request_ai(
+            db, user, "libros", "texto",
+            ai_gateway.ChatRequest([
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ], temperature=0.15, maximum_timeout=90),
+            profile=profile,
+        )
+        return (msg.get("content") or "").strip() or None
+    except AiRequestRejected:
+        raise
     except Exception as exc:  # noqa: BLE001 - se degrada a extractivo
         log_provider_error(logger, profile.provider, exc)
         return None
@@ -808,8 +797,8 @@ async def answer_question(
     question: str,
     section_index: int | None = None,
 ) -> tuple[str, list[BookCitation], str, str | None]:
-    profile = resolve_profile(user)
-    require_personal_key(profile)
+    profile = await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     actual_index = section_index if section_index is not None else book.current_section_index
     sections = await _rank_sections(db, book, question, actual_index)
     if not sections:
@@ -836,7 +825,7 @@ async def answer_question(
         + f"PREGUNTA: {question}\n\n"
         + "Responde solo con lo que dicen los extractos y añade las citas [S#]."
     )
-    answer = await _call_llm(profile, system, prompt)
+    answer = await _call_llm(db, user, profile, system, prompt)
     if answer:
         return answer, citations, "ai", None
 
@@ -855,8 +844,8 @@ async def summarize(
     scope: str,
     section_index: int | None = None,
 ) -> tuple[str, str, list[str], list[BookCitation], str, str | None]:
-    profile = resolve_profile(user)
-    require_personal_key(profile)
+    profile = await ai_gateway.load_profile(db, user)
+    ai_gateway.require_personal_key(profile)
     index = section_index if section_index is not None else book.current_section_index
     if scope == "current":
         result = await db.execute(
@@ -910,7 +899,7 @@ async def summarize(
         + f"\nCONTENIDO:\n{content}\n\n"
         + "Genera el resumen y entre 3 y 6 ideas clave."
     )
-    raw = await _call_llm(profile, system, prompt)
+    raw = await _call_llm(db, user, profile, system, prompt)
     data = _parse_json(raw) if raw else None
     if data and isinstance(data.get("summary"), str):
         summary_text = data["summary"].strip()

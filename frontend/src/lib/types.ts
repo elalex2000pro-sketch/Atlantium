@@ -136,6 +136,8 @@ export interface AssistantStatus {
   base_url: string;
   provider: string;
   has_api_key: boolean;
+  providers_with_key?: string[];
+  custom_base_url?: string;
 }
 
 export interface PendingAction {

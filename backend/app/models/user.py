@@ -59,7 +59,7 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # Proveedor de IA elegido por el usuario: local | gemini | openai | claude |
     # openrouter | custom (ver app/services/ai_service.py).
     ai_provider: Mapped[str] = mapped_column(String(16), default="local", nullable=False)
-    # Clave de API cifrada (necesaria en los proveedores remotos). Nunca en claro.
+    # Copia anterior a 0029. Las llamadas usan las filas de user_ai_keys.
     ai_api_key_encrypted: Mapped[str | None] = mapped_column(String(512))
     # Modelo y endpoint personalizados (opcionales; override de los presets).
     ai_model: Mapped[str | None] = mapped_column(String(120))

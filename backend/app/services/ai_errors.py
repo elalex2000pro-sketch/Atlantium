@@ -8,7 +8,11 @@ from fastapi import HTTPException
 REMOTE_PROVIDERS = frozenset({"gemini", "openai", "claude", "openrouter", "custom"})
 
 
-class AiKeyRequired(HTTPException):
+class AiRequestRejected(HTTPException):
+    """Rechazo previsto que debe llegar al usuario, incluso si hay fallback."""
+
+
+class AiKeyRequired(AiRequestRejected):
     def __init__(self) -> None:
         super().__init__(status_code=400, detail="Falta tu clave de IA en Ajustes")
 

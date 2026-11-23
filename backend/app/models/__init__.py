@@ -35,6 +35,7 @@ from app.models.task import Task
 from app.models.timetable_entry import TimetableEntry
 from app.models.upload_session import UploadSession
 from app.models.user import User
+from app.models.user_ai_key import UserAiKey
 
 __all__ = [
     "AiOutput",
@@ -73,6 +74,7 @@ __all__ = [
     "TimetableEntry",
     "UploadSession",
     "User",
+    "UserAiKey",
     "IntegrationStatus",
     "Provider",
     "SourcePlatform",
