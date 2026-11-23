@@ -10,7 +10,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.user import User
-from app.services.ai_service import resolve_profile
+from app.services.ai_service import require_personal_key, resolve_profile
 
 
 class AiNotConfigured(RuntimeError):
@@ -27,6 +27,7 @@ async def generate_json(
 ) -> dict[str, Any]:
     """Pide a la IA del usuario un objeto JSON valido."""
     profile = resolve_profile(user)
+    require_personal_key(profile)
     if not profile.configured or not profile.api_key:
         raise AiNotConfigured(
             "Configura tu IA en Ajustes (Gemini, ChatGPT, Claude u OpenRouter) para usar esta funcion."
@@ -64,6 +65,7 @@ async def generate_json_with_image(
 ) -> dict[str, Any]:
     """Pide a un modelo con vision que devuelva JSON a partir de una imagen."""
     profile = resolve_profile(user)
+    require_personal_key(profile)
     if not profile.configured or not profile.api_key:
         raise AiNotConfigured(
             "Para leer una foto necesitas una IA con vision configurada en Ajustes (OpenAI o Gemini)."
@@ -124,6 +126,7 @@ async def transcribe_audio(
 ) -> str:
     """Transcribe audio con un endpoint compatible con OpenAI Whisper."""
     profile = resolve_profile(user)
+    require_personal_key(profile)
     if not profile.api_key:
         raise AiNotConfigured(
             "La transcripcion necesita una clave de OpenAI (o un servicio compatible con Whisper) en Ajustes."

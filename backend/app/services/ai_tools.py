@@ -13,7 +13,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.ai_errors import log_provider_error
 from app.models.course import Course
 from app.models.enums import SourcePlatform, TaskPriority, TaskStatus
 from app.models.grade import Grade
@@ -445,9 +447,9 @@ async def execute_tool(
     try:
         return await handler(db, user, args)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Fallo al ejecutar la herramienta %s: %s", name, exc)
+        log_provider_error(logger, user.ai_provider or settings.ai_default_provider, exc)
         await db.rollback()
-        return {"ok": False, "error": str(exc)}, []
+        return {"ok": False, "error": "No se pudo ejecutar la acción."}, []
 
 
 async def _h_list_courses(db, user, args) -> tuple[dict, list[str]]:

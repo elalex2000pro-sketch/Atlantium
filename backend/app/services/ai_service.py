@@ -30,7 +30,12 @@ from app.models.task import Task
 from app.models.timetable_entry import TimetableEntry
 from app.models.user import User
 from app.services import ai_tools
-from app.services.ai_errors import provider_error_message
+from app.services.ai_errors import (
+    REMOTE_PROVIDERS,
+    AiKeyRequired,
+    log_provider_error,
+    provider_error_message,
+)
 
 logger = get_logger(__name__)
 
@@ -88,10 +93,6 @@ class AiResult:
     events: list[str] = field(default_factory=list)
 
 
-# Proveedores remotos que exigen clave de API (local y custom pueden no tenerla).
-_API_KEY_REQUIRED = {"gemini", "openai", "claude", "openrouter"}
-
-
 @dataclass
 class AiProfile:
     """Configuracion efectiva de IA para un usuario concreto (proveedor hibrido)."""
@@ -111,9 +112,14 @@ class AiProfile:
         """Listo para llamar al modelo? (los remotos exigen clave; local no)."""
         if not self.base_url or not self.model:
             return False
-        if self.provider in _API_KEY_REQUIRED and not self.api_key:
+        if self.provider in REMOTE_PROVIDERS and not self.api_key:
             return False
         return True
+
+
+def require_personal_key(profile: AiProfile) -> None:
+    if profile.provider in REMOTE_PROVIDERS and not profile.api_key:
+        raise AiKeyRequired()
 
 
 def resolve_profile(user: User) -> AiProfile:
@@ -414,6 +420,8 @@ async def generate_reply(
     Devuelve un AiResult con el texto, la fuente, una posible accion pendiente de
     confirmacion (borrados) y los eventos de tiempo real generados.
     """
+    profile = resolve_profile(user)
+    require_personal_key(profile)
     ctx = await build_context(db, user)
     system = f"{_SYSTEM_PROMPT}\n\nCONTEXTO DEL ESTUDIANTE:\n{render_context_text(ctx)}"
     system = _append_page_context(system, page_context, page_context_label)
@@ -436,7 +444,6 @@ async def generate_reply(
     if not prompt and page_context:
         prompt = "Resume el texto del PDF que estoy leyendo."
 
-    profile = resolve_profile(user)
     if profile.configured:
         try:
             if profile.provider == "gemini" and images:
@@ -446,9 +453,7 @@ async def generate_reply(
                         db, user, profile, system, history, prompt, images
                     )
                 except Exception as exc:  # noqa: BLE001 - se intenta la ruta OpenAI
-                    logger.warning(
-                        "Gemini nativo no disponible; probando la API compatible con OpenAI",
-                    )
+                    log_provider_error(logger, profile.provider, exc)
                     result = await _run_model(
                         db, user, profile, system, history, prompt, images
                     )
@@ -460,14 +465,9 @@ async def generate_reply(
                 return result
             logger.warning("El modelo devolvio una respuesta vacia; usando heuristico")
         except Exception as exc:  # noqa: BLE001 - degradacion controlada
+            log_provider_error(logger, profile.provider, exc)
             if profile.provider == "gemini":
-                logger.warning("Gemini no pudo completar la solicitud (%s)", type(exc).__name__)
                 return AiResult(reply=provider_error_message(exc), source="error")
-            logger.warning(
-                "IA Studio (%s) no disponible (%s); usando heuristico",
-                profile.provider,
-                exc,
-            )
 
     if document_text:
         return AiResult(

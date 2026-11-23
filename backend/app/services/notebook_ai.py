@@ -17,6 +17,7 @@ from sqlalchemy import select, func
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.db.base import utcnow
 from app.models.notebook import NotebookSource, NotebookMessage, NotebookAction
 from app.models.book import Book, BookSection
@@ -24,7 +25,10 @@ from app.models.document import Document
 from app.models.flashcard import Flashcard
 from app.models.quiz import Quiz
 from app.services import ai_service, ai_studio_service, ai_tools
+from app.services.ai_errors import log_provider_error
 from app.services.realtime import notify
+
+logger = get_logger(__name__)
 
 NO_ANSWER = "No encuentro esa información en las fuentes seleccionadas."
 TOOLS = {
@@ -196,6 +200,8 @@ def tool_schemas():
 
 
 async def chat(db, notebook, user, payload):
+    profile = ai_service.resolve_profile(user)
+    ai_service.require_personal_key(profile)
     def progress(stage):
         if payload.turn_id:
             notify(user.id, "notebook_chat_progress", {
@@ -223,7 +229,6 @@ async def chat(db, notebook, user, payload):
     messages = [{'role':'system','content':system}, *[{'role':m.role,'content':m.content} for m in reversed(history)], {'role':'user','content':payload.question}]
     db.add(NotebookMessage(created_at=utcnow(), notebook_id=nid,user_id=uid,role='user',content=payload.question,citations=[],actions=[]))
     actions, answer, used = [], NO_ANSWER, []
-    profile = ai_service.resolve_profile(user)
     if context and profile.configured:
         try:
             for _ in range(max(1, profile.max_tool_iterations)):
@@ -257,7 +262,8 @@ async def chat(db, notebook, user, payload):
                 if data.get('supported') is True and nums and not re.search(r'\b(?:cread[oa]s?|guardad[oa]s?|creé|guardé|generé|(?:he|hemos|se ha|se han)\s+(?:generado|añadido))\b', candidate, re.I):
                     answer, used = candidate, [c for c in citations if c['number'] in nums]
                 break
-        except Exception:
+        except Exception as exc:
+            log_provider_error(logger, profile.provider, exc)
             answer = 'No se pudo consultar el modelo de IA. Inténtalo de nuevo.'
     elif context:
         answer = 'Para usar Chat y Studio, abre Ajustes y configura tu modelo y, si lo necesita, su clave de IA.'

@@ -37,6 +37,7 @@ from app.schemas.assistant import (
     PendingAction,
 )
 from app.services import ai_service, ai_studio_service, ai_tools
+from app.services.ai_errors import AiKeyRequired, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -87,7 +88,7 @@ async def update_profile(
     db.add(current_user)
     await db.commit()
     await db.refresh(current_user)
-    logger.info("Proveedor de IA de %s cambiado a %s", current_user.email, payload.provider)
+    logger.info("Proveedor de IA cambiado a %s", payload.provider)
     return await assistant_status(current_user)
 
 
@@ -122,6 +123,7 @@ async def chat(
             detail="Escribe un mensaje o adjunta una imagen o un documento",
         )
 
+    ai_service.require_personal_key(ai_service.resolve_profile(current_user))
     image_data_urls = [item["data_url"] for item in prepared]
     document_text: str | None = None
     document_name: str | None = None
@@ -168,8 +170,10 @@ async def chat(
             page_context=payload.page_context,
             page_context_label=payload.page_context_label,
         )
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001 - el usuario siempre debe recibir respuesta
-        logger.error("Fallo inesperado del asistente: %s", exc)
+        log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
         result_ai = ai_service.AiResult(
             reply=(
                 "Lo siento, ha ocurrido un error interno al procesar tu mensaje. "
@@ -277,7 +281,7 @@ async def import_messages(
         db.add(message)
     await db.commit()
     notify(current_user.id, "assistant", {"action": "imported", "count": len(payload.messages)})
-    logger.info("Importados %d mensajes para %s", len(payload.messages), current_user.email)
+    logger.info("Importados %d mensajes del asistente", len(payload.messages))
     return {"imported": len(payload.messages)}
 
 
@@ -443,7 +447,7 @@ def _image_data_url(document: Document) -> str:
         with open(abs_path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("ascii")
     except OSError as exc:  # pragma: no cover - best effort
-        logger.error("No se pudo leer la imagen: %s", exc)
+        log_provider_error(logger, None, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No se pudo leer la imagen"
         ) from exc

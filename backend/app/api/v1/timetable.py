@@ -23,6 +23,7 @@ from app.schemas.timetable import (
     TimetableImportResult,
 )
 from app.services import ai_generate, ai_studio_service
+from app.services.ai_errors import AiKeyRequired, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -124,13 +125,15 @@ async def import_timetable(
             )
             raw_items = list(data.get("entries", []))
             source = "image-ai"
+        except AiKeyRequired:
+            raise
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Importacion de foto fallida: %s", exc)
+            log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=(
                     "No se pudo leer la foto. Necesitas una IA con vision (OpenAI o Gemini) "
-                    "configurada en Ajustes. Detalle: " + str(exc)[:200]
+                    "configurada en Ajustes."
                 ),
             ) from exc
     else:
@@ -156,8 +159,10 @@ async def import_timetable(
             )
             raw_items = list(data.get("entries", []))
             source = "ai"
+        except AiKeyRequired:
+            raise
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Importacion con IA no disponible, uso lector simple: %s", exc)
+            log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
             raw_items = _heuristic_schedule(text)
 
     entries = _normalize_entries(raw_items)

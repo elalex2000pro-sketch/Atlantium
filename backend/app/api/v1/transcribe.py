@@ -4,8 +4,10 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentUser
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.services import ai_generate
+from app.services.ai_errors import AiKeyRequired, log_provider_error
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transcribe", tags=["transcribe"])
@@ -39,13 +41,15 @@ async def transcribe(
         )
     except ai_generate.AiNotConfigured as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Fallo la transcripcion: %s", exc)
+        log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=(
                 "No se pudo transcribir. La transcripcion usa el endpoint Whisper de OpenAI; "
-                "configura OpenAI en Ajustes o un servicio compatible. Detalle: " + str(exc)[:200]
+                "configura OpenAI en Ajustes o un servicio compatible."
             ),
         ) from exc
     return {"text": text, "filename": filename}
