@@ -1,5 +1,22 @@
 """Mensajes seguros del proveedor: nunca incluyen URL, clave ni respuesta remota."""
+import logging
+
 import httpx
+from fastapi import HTTPException
+
+
+REMOTE_PROVIDERS = frozenset({"gemini", "openai", "claude", "openrouter", "custom"})
+
+
+class AiKeyRequired(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=400, detail="Falta tu clave de IA en Ajustes")
+
+
+def log_provider_error(logger: logging.Logger, provider: str | None, error: Exception) -> None:
+    safe_provider = provider if provider in REMOTE_PROVIDERS or provider == "local" else "desconocido"
+    status = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+    logger.warning("Error de IA tipo=%s proveedor=%s estado=%s", type(error).__name__, safe_provider, status)
 
 
 class AiProviderError(RuntimeError):

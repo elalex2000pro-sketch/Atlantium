@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.base import utcnow
 from app.models.flashcard import Flashcard
@@ -29,6 +30,7 @@ from app.schemas.learning import (
     QuizSubmit,
 )
 from app.services import ai_generate
+from app.services.ai_errors import AiKeyRequired, log_provider_error
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["learning"])
@@ -161,8 +163,10 @@ async def generate_flashcards(
             back = str(item.get("back", "")).strip()
             if front and back:
                 pairs.append((front[:2000], back[:4000]))
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001 - siempre hay plan B
-        logger.warning("Flashcards con IA no disponible: %s", exc)
+        log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
         source = "heuristic"
 
     if not pairs:
@@ -280,8 +284,10 @@ async def generate_quiz(
                         "explanation": str(item.get("explanation", "")).strip(),
                     }
                 )
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Examen con IA no disponible: %s", exc)
+        log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
         source = "heuristic"
 
     if not questions:

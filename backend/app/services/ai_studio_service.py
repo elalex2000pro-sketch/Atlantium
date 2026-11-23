@@ -19,8 +19,8 @@ from app.db.base import utcnow
 from app.models.ai_output import AiOutput
 from app.models.document import Document
 from app.models.user import User
-from app.services.ai_service import resolve_profile
-from app.services.ai_errors import AiProviderError, provider_error_message
+from app.services.ai_service import require_personal_key, resolve_profile
+from app.services.ai_errors import AiKeyRequired, AiProviderError, log_provider_error, provider_error_message
 from app.services.pdf_service import build_infographic_pdf, build_mindmap_pdf, build_summary_pdf
 
 try:
@@ -99,6 +99,10 @@ def _sanitize(text: str, *, truncate: bool = True) -> str:
 async def call_llm(user_text: str, kind: str, user: User | None = None) -> dict[str, Any]:
     """Llama al modelo del usuario (o al global) para obtener el resultado estructurado."""
     profile = resolve_profile(user) if user is not None else None
+    if profile is not None:
+        require_personal_key(profile)
+        if profile.provider != "local" and not profile.configured:
+            raise RuntimeError("IA no configurada")
     if profile is not None and profile.configured:
         model = profile.model
         base_url = profile.base_url
@@ -166,7 +170,6 @@ async def call_llm(user_text: str, kind: str, user: User | None = None) -> dict[
     try:
         return _extract_json(content)
     except Exception as exc:
-        logger.warning("JSON invalido del LLM: %s", exc)
         raise RuntimeError("El LLM no devolvio JSON valido") from exc
 
 
@@ -228,10 +231,13 @@ async def generate(
     text = extract_text(document)
     try:
         data = await call_llm(text, kind, user)
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001
-        if resolve_profile(user).provider == "gemini":
+        provider = resolve_profile(user).provider
+        log_provider_error(logger, provider, exc)
+        if provider == "gemini":
             raise AiProviderError(provider_error_message(exc)) from None
-        logger.warning("AI Studio usando heuristico: %s", exc)
         source = "heuristic"
         if kind == "summary":
             data = _heuristic_summary(normalize_filename(document.filename), text)

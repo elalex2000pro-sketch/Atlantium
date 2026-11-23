@@ -34,7 +34,8 @@ from app.models.book import Book, BookSection
 from app.models.document import Document
 from app.models.user import User
 from app.schemas.book import BookCitation
-from app.services.ai_service import resolve_profile
+from app.services.ai_errors import log_provider_error
+from app.services.ai_service import AiProfile, require_personal_key, resolve_profile
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -753,8 +754,7 @@ def _extractive_answer(question: str, sections: list[BookSection]) -> tuple[str,
     return "\n\n".join(selected), citations
 
 
-async def _call_llm(user: User, system: str, prompt: str) -> str | None:
-    profile = resolve_profile(user)
+async def _call_llm(profile: AiProfile, system: str, prompt: str) -> str | None:
     if not profile.configured:
         return None
     payload = {
@@ -781,7 +781,7 @@ async def _call_llm(user: User, system: str, prompt: str) -> str | None:
         content = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
         return content.strip() or None
     except Exception as exc:  # noqa: BLE001 - se degrada a extractivo
-        logger.warning("IA del libro no disponible (%s); usando extractivo", exc)
+        log_provider_error(logger, profile.provider, exc)
         return None
 
 
@@ -808,6 +808,8 @@ async def answer_question(
     question: str,
     section_index: int | None = None,
 ) -> tuple[str, list[BookCitation], str, str | None]:
+    profile = resolve_profile(user)
+    require_personal_key(profile)
     actual_index = section_index if section_index is not None else book.current_section_index
     sections = await _rank_sections(db, book, question, actual_index)
     if not sections:
@@ -834,7 +836,7 @@ async def answer_question(
         + f"PREGUNTA: {question}\n\n"
         + "Responde solo con lo que dicen los extractos y añade las citas [S#]."
     )
-    answer = await _call_llm(user, system, prompt)
+    answer = await _call_llm(profile, system, prompt)
     if answer:
         return answer, citations, "ai", None
 
@@ -853,6 +855,8 @@ async def summarize(
     scope: str,
     section_index: int | None = None,
 ) -> tuple[str, str, list[str], list[BookCitation], str, str | None]:
+    profile = resolve_profile(user)
+    require_personal_key(profile)
     index = section_index if section_index is not None else book.current_section_index
     if scope == "current":
         result = await db.execute(
@@ -906,7 +910,7 @@ async def summarize(
         + f"\nCONTENIDO:\n{content}\n\n"
         + "Genera el resumen y entre 3 y 6 ideas clave."
     )
-    raw = await _call_llm(user, system, prompt)
+    raw = await _call_llm(profile, system, prompt)
     data = _parse_json(raw) if raw else None
     if data and isinstance(data.get("summary"), str):
         summary_text = data["summary"].strip()

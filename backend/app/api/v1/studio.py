@@ -19,7 +19,7 @@ from app.models.ai_output import AiOutput
 from app.models.document import Document
 from app.schemas.studio import AiOutputRead, StudioGenerateRequest
 from app.services import ai_studio_service
-from app.services.ai_errors import AiProviderError
+from app.services.ai_errors import AiKeyRequired, AiProviderError, log_provider_error
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -38,8 +38,10 @@ async def generate(
         raise HTTPException(status_code=502, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except AiKeyRequired:
+        raise
     except Exception as exc:  # noqa: BLE001
-        logger.error("Fallo al generar con IA: %s", exc)
+        log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="No se pudo generar la salida de IA",
@@ -184,4 +186,4 @@ def _safe_remove(path: str) -> None:
         if os.path.exists(path):
             os.remove(path)
     except OSError as exc:  # pragma: no cover
-        logger.warning("No se pudo borrar %s: %s", path, exc)
+        log_provider_error(logger, None, exc)

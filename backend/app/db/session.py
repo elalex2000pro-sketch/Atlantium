@@ -44,6 +44,7 @@ def normalize_async_database_url(url: str) -> str:
 engine = create_async_engine(
     normalize_async_database_url(settings.database_url),
     echo=settings.debug,
+    hide_parameters=True,
     pool_pre_ping=True,
     future=True,
     connect_args={"statement_cache_size": 0},

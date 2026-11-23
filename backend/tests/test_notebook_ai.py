@@ -61,7 +61,7 @@ def test_own_notes_missing_ai_explains_settings_and_makes_no_call(client,monkeyp
     from types import SimpleNamespace
     c=client;a,_,_,_=setup(c)
     note=c.post('/api/v1/notebooks',headers=a,json={'title':'Apuntes','content':'La mitocondria produce ATP.'}).json()
-    monkeypatch.setattr(ai_service,'resolve_profile',lambda user:SimpleNamespace(configured=False))
+    monkeypatch.setattr(ai_service,'resolve_profile',lambda user:SimpleNamespace(provider="local", configured=False))
     async def forbidden(*args):raise AssertionError('No debe llamar al proveedor sin configurar')
     monkeypatch.setattr(ai_service,'_post_chat',forbidden)
     result=c.post('/api/v1/notebooks/'+note['id']+'/chat',headers=a,json={'question':'Crea tarjetas','source_ids':[]}).json()
