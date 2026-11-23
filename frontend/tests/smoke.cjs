@@ -96,6 +96,8 @@ async function main() {
   }
   await require('./shared-focus-timer-e2e.cjs').verifySharedFocusTimer(browser, { WEB, request });
   console.log('PASS shared focus timer: panel, Enfoque, one save and one XP award');
+  await require('./documents-canvas-e2e.cjs').verifyDocumentsCanvas(browser, { WEB, token, user });
+  console.log('PASS Documents: delayed canvas creation, one board per click');
   if (process.env.SMOKE_WEB_MODE === 'start') {
     await require('./pwa-e2e.cjs').verifyPwa(browser, { WEB, API, token, user, office, output, pdfFixture });
   }

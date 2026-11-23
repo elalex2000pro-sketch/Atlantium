@@ -13,7 +13,6 @@ import {
   type CanvasBoard,
   type CanvasBoardMeta,
 } from "@/lib/canvas-store";
-import { NEW_CANVAS_EVENT } from "@/lib/documents";
 import { cn } from "@/lib/utils";
 
 const CanvasWorkspace = dynamic(
@@ -41,7 +40,7 @@ function formatDate(timestamp: number): string {
 }
 
 /** Lista y editor de pizarras infinitas guardadas en el dispositivo. */
-export function CanvasView() {
+export function CanvasView({ consumeCreateRequest }: { consumeCreateRequest?: () => boolean }) {
   const [boards, setBoards] = useState<CanvasBoardMeta[]>([]);
   const [active, setActive] = useState<CanvasBoard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,10 +76,8 @@ export function CanvasView() {
   }, [load]);
 
   useEffect(() => {
-    const onCreate = () => void createBoard();
-    window.addEventListener(NEW_CANVAS_EVENT, onCreate);
-    return () => window.removeEventListener(NEW_CANVAS_EVENT, onCreate);
-  }, [createBoard]);
+    if (consumeCreateRequest?.()) void createBoard();
+  }, [consumeCreateRequest, createBoard]);
 
   async function openBoard(id: string) {
     try {

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Calculator, FileText, NotebookPen, PenTool, Plus, X } from "lucide-react";
 
 import NotebooksPage from "@/app/notebooks/page";
@@ -9,7 +9,7 @@ import { AcademicOfficeView } from "@/components/academic-office-view";
 import { EditablePanels } from "@/components/layout/editable-panels";
 import { CalculatorPanel } from "@/components/calculator";
 import { Button } from "@/components/ui/button";
-import { requestNewCanvas, requestNewNotebook } from "@/lib/documents";
+import { requestNewNotebook } from "@/lib/documents";
 import { cn } from "@/lib/utils";
 
 const CanvasView = dynamic(
@@ -47,7 +47,9 @@ const KIND_TABS: { id: DocumentKind; label: string; description: string }[] = [
 export function DocumentsView() {
   const [kind, setKind] = useState<DocumentKind>("notes");
   const [chooserOpen, setChooserOpen] = useState(false);
-  const [pendingNew, setPendingNew] = useState<DocumentKind | null>(null);
+  const [pendingNew, setPendingNew] = useState<"notes" | null>(null);
+  const [canvasRequested, setCanvasRequested] = useState(false);
+  const canvasPending = useRef(false);
   const [formalSignal, setFormalSignal] = useState(0);
   // Calculadora flotante: se abre con un clic desde cualquier pestaña.
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -59,17 +61,24 @@ export function DocumentsView() {
       requestNewNotebook();
       setPendingNew(null);
     }
-    if (kind === "canvas" && pendingNew === "canvas") {
-      requestNewCanvas();
-      setPendingNew(null);
-    }
   }, [kind, pendingNew]);
+
+  const consumeCanvasRequest = useCallback(() => {
+    // Claim synchronously so a repeated mount effect cannot create a second board.
+    if (!canvasPending.current) return false;
+    canvasPending.current = false;
+    setCanvasRequested(false);
+    return true;
+  }, []);
 
   function create(next: DocumentKind) {
     setChooserOpen(false);
     setKind(next);
     if (next === "formal") setFormalSignal((value) => value + 1);
-    else if (next === "canvas") setPendingNew("canvas");
+    else if (next === "canvas") {
+      canvasPending.current = true;
+      setCanvasRequested(true);
+    }
     else setPendingNew("notes");
   }
 
@@ -139,7 +148,7 @@ export function DocumentsView() {
               ) : kind === "formal" ? (
                 <AcademicOfficeView newSignal={formalSignal} />
               ) : (
-                <CanvasView />
+                <CanvasView consumeCreateRequest={canvasRequested ? consumeCanvasRequest : undefined} />
               ),
           },
         ]}
