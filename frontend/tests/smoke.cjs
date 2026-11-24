@@ -71,6 +71,14 @@ async function main() {
   assert.equal((await (await fetch(API + '/health')).json()).environment, 'isolated-chat-test', 'Never run against production');
   const channel = process.env.SMOKE_BROWSER_CHANNEL || 'chrome';
   browser = await chromium.launch({ headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], ...(channel === 'chromium' ? {} : { channel }) });
+  const guest = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await guest.goto(WEB + '/login');
+  const guestCookie = guest.getByRole('button', { name: 'Abrir Cookie, tu asistente de IA' });
+  await guest.getByRole('tab', { name: 'Crear cuenta', exact: true }).click();
+  assert.equal(await guestCookie.count(), 0);
+  await guest.getByRole('tab', { name: 'Entrar', exact: true }).click();
+  assert.equal(await guestCookie.count(), 0);
+  await guest.close();
   await require('./interface-style-e2e.cjs').verifyInterfaceStyle(browser, { WEB, request });
   console.log('PASS appearance: onboarding, selector and persistence');
   if (process.argv.includes('--appearance-only')) return;
@@ -138,10 +146,20 @@ async function main() {
     try {
       if (!process.argv.includes('--studio-only')) {
       for (const route of ['/', '/planner', '/calendar', '/schedule', '/academics', '/classes', `/classes/${group.id}`, '/chat', '/review', '/notebooks', '/documents', '/office', `/office/${office.id}`, '/focus', '/settings', '/files', '/studio', '/studio?mode=audio', '/studio?mode=document', '/library']) await visit(route);
+      await visit('/documents');
+      const documentsCookie = page.getByRole('button', { name: 'Abrir Cookie, tu asistente de IA' });
+      await documentsCookie.waitFor();
+      await page.getByRole('button', { name: 'Nuevo', exact: true }).click();
+      const documentsDialog = page.getByRole('dialog', { name: '¿Qué quieres crear?' });
+      await documentsDialog.waitFor();
+      assert.equal(await documentsCookie.isVisible(), false);
+      await documentsDialog.getByRole('button', { name: 'Cerrar' }).click();
+      await documentsCookie.waitFor();
       reports.push(await require('./task-delivery-e2e.cjs').verifyTaskDeliveries(browser, { API, WEB, output, viewport }));
       await require('./task-snooze-e2e.cjs').verifyTaskSnooze(browser, { API, WEB, output, viewport });
       await require('./grade-groups-e2e.cjs').verifyGradeGroups(browser, { API, WEB, output, viewport });
       // The reader is local IndexedDB, not /books. Import an actual PDF through its UI.
+      await visit('/library');
       await page.locator('input[type=file]').setInputFiles({ name: 'smoke-reader.pdf', mimeType: 'application/pdf', buffer: pdfFixture() });
       const link = page.locator('a[href^="/library/"]:visible').first(); await link.waitFor({ timeout: 30000 });
       const reader = await link.getAttribute('href'); current = reader; const beforeReader = errors.length;
@@ -158,6 +176,15 @@ async function main() {
       assert.ok(response && response.ok(), `${reader}: HTTP ${response?.status()}`);
       await assertView(directReader, reader);
       await directReader.locator('.pdf-reader canvas').first().waitFor({ timeout: 30000 });
+      const readerCookie = directReader.getByRole('button', { name: 'Abrir Cookie, tu asistente de IA' });
+      assert.ok(await readerCookie.isVisible());
+      const readerCookieBounds = await readerCookie.boundingBox();
+      const readerAi = directReader.getByRole('button', { name: 'Preguntar a la IA sobre esta página' });
+      const readerAiBounds = await readerAi.boundingBox();
+      assert.ok(readerAiBounds.y + readerAiBounds.height < readerCookieBounds.y);
+      if (viewport.width === 390) {
+        assert.ok(await directReader.getByRole('button', { name: 'Abrir panel de IA', exact: true }).isVisible());
+      }
       await assertNoFallback(directReader, reader);
       assert.deepEqual(errors.slice(beforeReader), [], reader + ': browser errors');
       reports.push({ viewport: viewport.width, route: reader, ok: true, linked: true, direct: true });
@@ -170,7 +197,14 @@ async function main() {
       const quickTrigger = page.getByRole('button', { name: 'Abrir Cookie, tu asistente de IA', exact: true });
       const orb = quickTrigger.locator('[data-cookie-orb]');
       const bounds = await quickTrigger.boundingBox();
-      assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width);
+      assert.ok(bounds && bounds.x > viewport.width / 2 && bounds.y > viewport.height / 2);
+      assert.equal(await quickTrigger.evaluate(element => getComputedStyle(element).position), 'fixed');
+      const mobileNav = page.locator('[data-mobile-nav]');
+      if (await mobileNav.isVisible()) {
+        assert.ok(bounds.y + bounds.height <= (await mobileNav.boundingBox()).y);
+      } else {
+        assert.ok(viewport.height - bounds.y - bounds.height <= 24);
+      }
       await orb.evaluate(element => {
         const start = getComputedStyle(element).transform;
         return new Promise((resolve, reject) => {
@@ -190,13 +224,14 @@ async function main() {
       await page.keyboard.press('Enter');
       const quickPanel = page.getByRole('dialog', { name: 'Panel de IA', exact: true });
       await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
-      assert.equal(await quickTrigger.getAttribute('aria-expanded'), 'true');
+      assert.equal(await quickTrigger.isVisible(), false);
+      const quickMessage = quickPanel.getByRole('textbox', { name: 'Mensaje para la IA' });
+      assert.equal(await quickMessage.evaluate(element => document.activeElement === element), true);
       await quickPanel.getByText('Falta tu clave de IA en Ajustes', { exact: false }).waitFor();
       assert.equal(await quickPanel.getByRole('link', { name: 'Abrir Ajustes de IA' }).getAttribute('href'), '/settings?tab=integrations');
       assert.ok(await quickPanel.getByRole('button', { name: 'Enviar mensaje' }).isDisabled());
       await page.keyboard.press('Escape');
       await quickPanel.waitFor({ state: 'hidden' });
-      assert.equal(await quickTrigger.getAttribute('aria-expanded'), 'false');
       assert.equal(await quickTrigger.evaluate(element => document.activeElement === element), true);
       assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: 'clave-simulada' });
@@ -254,7 +289,8 @@ async function main() {
       await assertCookieStill();
       await quickTrigger.click();
       await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
-      await quickPanel.getByRole('button', { name: 'Cerrar Cookie, tu asistente de IA' }).click();
+      assert.equal(await quickMessage.evaluate(element => document.activeElement === element), true);
+      await quickPanel.getByRole('button', { name: 'Cerrar panel de IA' }).click();
       await quickPanel.waitFor({ state: 'hidden' });
       await page.evaluate(() => {
         const key = 'academic-autopilot-preferences';
@@ -273,6 +309,9 @@ async function main() {
       // Persist the model through the real test API; simulate provider replies only.
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', model: 'gemini-2.5-flash' });
       await visit('/studio');
+      const studioSend = await page.getByRole('button', { name: 'Enviar mensaje' }).boundingBox();
+      const studioCookie = await quickTrigger.boundingBox();
+      assert.ok(studioSend.x + studioSend.width <= studioCookie.x);
       const model = page.getByLabel('Modelo de Gemini');
       await model.selectOption('gemini-3.1-pro-preview');
       await page.getByText('Modelo de IA actualizado:', { exact: false }).waitFor();

@@ -136,7 +136,7 @@ export function StudioChatPanel({
               "z-40 max-w-3xl min-w-0",
               embedded
                 ? "mx-auto w-full shrink-0 border-t border-slate-300/35 bg-[#f4f4f7]/55 px-3 pb-3 pt-2 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0f18]/45 sm:px-5"
-                : "fixed bottom-[calc(var(--mobile-nav-offset)+0.75rem)] left-1/2 w-[calc(100%-1.5rem)] -translate-x-1/2 lg:bottom-6 lg:left-[calc(50%+118px)]",
+                : "fixed bottom-[calc(var(--mobile-nav-offset)+0.75rem)] left-[calc(var(--shell-left-rail,0px)+0.75rem)] right-[calc(var(--shell-right-rail,0px)+var(--cookie-gutter))] mx-auto md:bottom-6",
             )}
           >
             {openBook && (

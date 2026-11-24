@@ -290,6 +290,7 @@ html.dark:is([data-interface-style="solid"], [data-interface-style="wallpaper"])
   position: relative;
   flex-shrink: 0;
   padding: 10px 16px 11px;
+  padding-right: max(16px, var(--cookie-gutter, 0px));
   border-top: 1px solid var(--chat-edge);
   background: var(--chat-control);
 }
