@@ -74,7 +74,7 @@ function PreviewSection({ entries }: { entries: NonNullable<PanelPreview["sectio
   ));
 }
 
-export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, reduceMotion, celebrating }: {
+export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, reduceMotion, celebrating, outfit }: {
   onClose: () => void;
   fromCookie: boolean;
   card: CookieCard | null;
@@ -82,6 +82,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, redu
   userId: string;
   reduceMotion: boolean;
   celebrating: boolean;
+  outfit: readonly string[];
 }) {
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -244,7 +245,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, redu
   return (
     <>
       <header className="flex shrink-0 items-center gap-3 border-b border-border/50 bg-background/35 px-4 py-3 backdrop-blur-xl">
-        <CookieOrb reduceMotion={reduceMotion} expression={celebrating && !reduceMotion ? "happy" : sending ? "thinking" : notice ? "surprised" : messages.length ? "happy" : "neutral"} />
+        <CookieOrb reduceMotion={reduceMotion} outfit={outfit} expression={celebrating && !reduceMotion ? "happy" : sending ? "thinking" : notice ? "surprised" : messages.length ? "happy" : "neutral"} />
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Cookie</h2>
           <p className="truncate text-xs text-muted-foreground">
@@ -257,7 +258,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, redu
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </header>
-      <CookieProgress userId={userId} />
+      <CookieProgress userId={userId} outfit={outfit} />
       <div ref={scroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {!messages.length && (
           <div className="space-y-4">

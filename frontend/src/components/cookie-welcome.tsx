@@ -7,12 +7,13 @@ import { CookieOrb } from "@/components/cookie-button";
 const seenInMemory = new Set<string>();
 const startupOverlay = '[data-boot-splash], [data-cookie-startup-overlay], [aria-modal="true"], dialog[open]';
 
-export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
+export function CookieWelcome({ anchor, userId, name, reduced, panelOpen, outfit }: {
   anchor: RefObject<HTMLButtonElement>;
   userId: string;
   name?: string;
   reduced: boolean;
   panelOpen: boolean;
+  outfit: readonly string[];
 }) {
   const key = `atlantium:cookie-welcome:${userId}`;
   const [phase, setPhase] = useState<"waiting" | "greeting" | "flight" | "done">("waiting");
@@ -84,6 +85,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
 
   if (phase === "waiting" || phase === "done" || !place) return null;
   const greeting = phase === "greeting";
+  const hasHeadwear = outfit.includes("crown") || outfit.includes("graduation-cap");
   const x = place.x - window.innerWidth / 2;
   const y = place.y - window.innerHeight / 2;
   return (
@@ -94,7 +96,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
           {greeting && (
             <motion.div role="status" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-              className={`absolute bottom-full mb-6 w-max max-w-[calc(100vw-2rem)] ${reduced ? "right-0" : "left-1/2 -translate-x-1/2"}`}>
+              className={`absolute bottom-full w-max max-w-[calc(100vw-2rem)] ${reduced ? "right-0 mb-6" : `left-1/2 -translate-x-1/2 ${hasHeadwear ? "mb-12" : "mb-6"}`}`}>
               <div className="app-glass rounded-2xl px-4 py-2 text-center text-sm font-medium shadow-lg [overflow-wrap:anywhere]">
                 Hola{name ? `, ${name}` : ""}, ¿qué tal?
               </div>
@@ -115,7 +117,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
               finish();
               requestAnimationFrame(() => anchor.current?.focus({ preventScroll: true }));
             }}>
-            <CookieOrb reduceMotion={false} expression={greeting ? "neutral" : "happy"} idle={greeting} greet={greeting} size="floating" />
+            <CookieOrb reduceMotion={false} expression={greeting ? "neutral" : "happy"} idle={greeting} greet={greeting} size="floating" outfit={outfit} />
           </motion.button>
         )}
       </div>

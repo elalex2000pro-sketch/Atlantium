@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Loader2, LogOut } from "lucide-react";
 import { CookieButton, CookieOrb } from "@/components/cookie-button";
@@ -25,6 +25,7 @@ import { ThemeCycleButton } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/navigation/sidebar";
 import { Button } from "@/components/ui/button";
 import { AI_DRAWER_EVENT, QUICK_AI_DRAWER_EVENT, type CookieCard } from "@/lib/ai-drawer";
+import { COOKIE_OUTFIT_EVENT, getEquippedCookieRewards, XP_EVENT } from "@/lib/gamification";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 import {
   SECONDARY_NAV_ITEMS,
@@ -68,8 +69,18 @@ const WIDE_CONTENT_ROUTES = new Set(["/classes", "/academics", "/library", "/doc
 const HEADER_BUTTON =
   "h-9 w-9 rounded-full text-literal-3f3852 hover:bg-white/60 hover:text-text-on-selection dark:text-white/65 dark:hover:bg-white/10 dark:hover:text-white";
 
+function subscribeCookieOutfit(onChange: () => void) {
+  const events = [COOKIE_OUTFIT_EVENT, XP_EVENT, "storage"];
+  events.forEach((event) => window.addEventListener(event, onChange));
+  return () => events.forEach((event) => window.removeEventListener(event, onChange));
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
+  const userId = user?.id ?? "";
+  const readOutfit = useCallback(() => getEquippedCookieRewards(userId).join(","), [userId]);
+  const outfitKey = useSyncExternalStore(subscribeCookieOutfit, readOutfit, () => "");
+  const cookieOutfit = outfitKey ? outfitKey.split(",") : [];
   const pathname = usePathname();
   const router = useRouter();
   const { animationLevel } = usePreferences();
@@ -81,12 +92,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
   const [cookieCard, setCookieCard] = useState<CookieCard | null>(null);
   const [cookieCelebrating, setCookieCelebrating] = useState(false);
+  const [toastSlot, setToastSlot] = useState<HTMLDivElement | null>(null);
   const [cookieOrigin, setCookieOrigin] = useState<{ right: number; bottom: number } | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
   const cookieAnchor = useRef<HTMLButtonElement>(null);
   const cookieTrigger = useRef<HTMLButtonElement | null>(null);
   const quickAiExpanded = aiMode === "cookie" || aiMode === "quick";
   const closeAi = () => setAiMode(null);
+
+  useEffect(() => {
+    const dialog = toastSlot?.parentElement;
+    if (!dialog) return;
+    const trapTab = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
+      )).filter((item) => item.getClientRects().length > 0);
+      const first = items[0];
+      const last = items.at(-1);
+      if (!first || !last || (event.shiftKey
+        ? document.activeElement === first || document.activeElement === dialog
+        : document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    };
+    dialog.addEventListener("keydown", trapTab);
+    return () => dialog.removeEventListener("keydown", trapTab);
+  }, [toastSlot]);
 
   // Guard de rutas: sin sesión -> /login.
   useEffect(() => {
@@ -337,6 +370,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ref={cookieAnchor}
             reduceMotion={reduceMotion}
             celebrating={cookieCelebrating}
+            outfit={cookieOutfit}
             active={!aiMode}
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
@@ -355,11 +389,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         {!showOnboarding && (
           <CookieWelcome key={user.id} userId={user.id} name={firstName} anchor={cookieAnchor}
-            reduced={reduceMotion} panelOpen={Boolean(aiMode)} />
+            reduced={reduceMotion} panelOpen={Boolean(aiMode)} outfit={cookieOutfit} />
         )}
       </div>
 
-      <GamificationToast key={user.id} userId={user.id} reduceMotion={reduceMotion} panelOpen={Boolean(aiMode)} onCelebrate={setCookieCelebrating} />
+      <GamificationToast key={user.id} userId={user.id} reduceMotion={reduceMotion} panelOpen={Boolean(aiMode)}
+        onCelebrate={setCookieCelebrating} outfit={cookieOutfit} panelSlot={aiMode ? toastSlot : null} />
       <GamificationThemeSync />
 
       <AnimatePresence>
@@ -400,21 +435,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ? { duration: 0.5, delay: cookieOrigin ? 0.1 : 0, times: [0, 0.82, 1], ease: "easeOut" }
                 : { type: "spring", stiffness: 320, damping: 34 }}
               onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key !== "Tab") return;
-                const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-                  'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
-                )).filter((item) => item.getClientRects().length > 0);
-                const first = items[0];
-                const last = items.at(-1);
-                if (!first || !last || (event.shiftKey
-                  ? document.activeElement === first || document.activeElement === aiDialog.current
-                  : document.activeElement === last)) {
-                  event.preventDefault();
-                  (event.shiftKey ? last : first)?.focus();
-                }
-              }}
             >
+              <div ref={setToastSlot} className="shrink-0" />
               <Suspense
                 fallback={
                   <div className="flex h-full items-center justify-center gap-2 text-[12px] text-slate-500 dark:text-white/45">
@@ -424,7 +446,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 {quickAiExpanded ? (
                   <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} card={aiMode === "cookie" ? cookieCard : null}
-                    userName={firstName} userId={user.id} reduceMotion={reduceMotion} celebrating={cookieCelebrating} />
+                    userName={firstName} userId={user.id} reduceMotion={reduceMotion} celebrating={cookieCelebrating} outfit={cookieOutfit} />
                 ) : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>
@@ -444,7 +466,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               exit={{ x: [-52, -22, 0, 0], y: [-105, -75, 0, 0], opacity: [0, 1, 1, 1],
                 scaleX: [1, 0.94, 1.12, 1], scaleY: [1, 1.13, 0.86, 1],
                 transition: { duration: 0.31, times: [0, 0.35, 0.81, 1], ease: "easeInOut" } }}>
-              <CookieOrb expression="happy" reduceMotion={false} idle={false} size="floating" />
+              <CookieOrb expression="happy" reduceMotion={false} idle={false} size="floating" outfit={cookieOutfit} />
             </motion.div>
           </motion.div>
         )}

@@ -59,3 +59,34 @@ test('El XP previo se conserva y cada subida se anuncia una vez por usuario', ()
   assert.deepEqual(Array.from(reloaded.claimCookieLevelNotice('leo', 1, 2), reward => reward.id), ['glasses']);
   assert.deepEqual(Array.from(reloaded.claimCookieLevelNotice('ana', 2, 6), reward => reward.id), ['headphones', 'graduation-cap']);
 });
+
+test('El equipo combina huecos, reemplaza gorro por corona y permite quitar', () => {
+  const profile = JSON.stringify({ xp: 4500, equippedTheme: 'theme-aurora', awardedTasks: ['previa'] });
+  const values = new Map([['autopilot:gamification:ana', profile]]);
+  const { xp, events } = load(values);
+  for (const { id } of xp.COOKIE_REWARDS) assert.equal(xp.setCookieRewardEquipped('ana', id, true), true);
+  const ready = ['glasses', 'headphones', 'scarf', 'crown'];
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('ana')), ready);
+  assert.deepEqual(Array.from(load(values).xp.getEquippedCookieRewards('ana')), ready);
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('leo')), []);
+  assert.equal(xp.setCookieRewardEquipped('ana', 'graduation-cap', false), true);
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('ana')), ready);
+  assert.equal(xp.setCookieRewardEquipped('ana', 'crown', false), true);
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('ana')), ready.slice(0, 3));
+  assert.equal(values.get('autopilot:gamification:ana'), profile);
+  assert.equal(events.at(-1).type, xp.COOKIE_OUTFIT_EVENT);
+});
+
+test('El equipo ignora accesorios bloqueados, desconocidos y en el hueco equivocado', () => {
+  const values = new Map([
+    ['autopilot:gamification:ana', JSON.stringify({ xp: 100 })],
+    ['autopilot:cookie-outfit:ana', JSON.stringify({ eyes: 'glasses', head: 'crown', ears: 'glasses', neck: 'desconocido' })],
+  ]);
+  const { xp, events } = load(values);
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('ana')), ['glasses']);
+  assert.equal(xp.setCookieRewardEquipped('ana', 'headphones', true), false);
+  assert.equal(xp.setCookieRewardEquipped('ana', 'desconocido', true), false);
+  assert.equal(events.length, 0);
+  values.set('autopilot:cookie-outfit:ana', '{');
+  assert.deepEqual(Array.from(xp.getEquippedCookieRewards('ana')), []);
+});

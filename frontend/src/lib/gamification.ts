@@ -9,20 +9,60 @@
 export const XP_EVENT = "autopilot:xp";
 export const LEVEL_UP_EVENT = "autopilot:level-up";
 export const COSMETICS_EVENT = "autopilot:cosmetics";
+export const COOKIE_OUTFIT_EVENT = "autopilot:cookie-outfit";
 export const TASK_XP = 15;
 export const FOCUS_XP = 25;
 export const MAX_LEVEL = 99;
 
 export const COOKIE_REWARDS = [
-  { id: "glasses", name: "Gafas", level: 2, icon: "🕶️" },
-  { id: "headphones", name: "Auriculares", level: 4, icon: "🎧" },
-  { id: "graduation-cap", name: "Gorro de graduación", level: 6, icon: "🎓" },
-  { id: "scarf", name: "Bufanda", level: 8, icon: "🧣" },
-  { id: "crown", name: "Corona", level: 10, icon: "👑" },
+  { id: "glasses", name: "Gafas", level: 2, icon: "🕶️", slot: "eyes" },
+  { id: "headphones", name: "Auriculares", level: 4, icon: "🎧", slot: "ears" },
+  { id: "graduation-cap", name: "Gorro de graduación", level: 6, icon: "🎓", slot: "head" },
+  { id: "scarf", name: "Bufanda", level: 8, icon: "🧣", slot: "neck" },
+  { id: "crown", name: "Corona", level: 10, icon: "👑", slot: "head" },
 ] as const;
+
+export type CookieRewardId = (typeof COOKIE_REWARDS)[number]["id"];
 
 export function getCookieRewards(level: number) {
   return COOKIE_REWARDS.map((reward) => ({ ...reward, unlocked: level >= reward.level }));
+}
+
+function cookieOutfitKey(userId: string) {
+  return `autopilot:cookie-outfit:${userId}`;
+}
+
+export function getEquippedCookieRewards(userId: string): CookieRewardId[] {
+  if (typeof window === "undefined" || !userId) return [];
+  const level = getLevelInfo(getGamification(userId).xp).level;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(cookieOutfitKey(userId)) ?? "{}");
+    return COOKIE_REWARDS
+      .filter((reward) => reward.level <= level && stored?.[reward.slot] === reward.id)
+      .map((reward) => reward.id);
+  } catch {
+    return [];
+  }
+}
+
+export function setCookieRewardEquipped(userId: string, id: CookieRewardId, equipped: boolean): boolean {
+  if (typeof window === "undefined" || !userId) return false;
+  const level = getLevelInfo(getGamification(userId).xp).level;
+  const reward = COOKIE_REWARDS.find((item) => item.id === id);
+  if (!reward || reward.level > level) return false;
+
+  const current = getEquippedCookieRewards(userId);
+  const outfit = Object.fromEntries(COOKIE_REWARDS
+    .filter((item) => current.includes(item.id) && item.id !== id && (!equipped || item.slot !== reward.slot))
+    .map((item) => [item.slot, item.id]));
+  if (equipped) outfit[reward.slot] = id;
+  try {
+    window.localStorage.setItem(cookieOutfitKey(userId), JSON.stringify(outfit));
+  } catch {
+    return false;
+  }
+  window.dispatchEvent(new CustomEvent(COOKIE_OUTFIT_EVENT));
+  return true;
 }
 
 const cookieNotifiedLevels = new Map<string, number>();

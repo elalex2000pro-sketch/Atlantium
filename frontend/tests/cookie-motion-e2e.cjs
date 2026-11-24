@@ -98,6 +98,7 @@ async function verifyCookieMotion(browser, { WEB, token, user, output }) {
       const glasses = dialog.getByRole('list', { name: 'Recompensas de Cookie' })
         .getByRole('listitem').filter({ hasText: 'Gafas' });
       await glasses.getByText('Nivel 2', { exact: true }).waitFor();
+      assert.equal(await glasses.getByRole('button').count(), 0, 'Un cosmético bloqueado no tiene botón');
 
       const levelUp = () => page.evaluate(userId => {
         localStorage.setItem(`autopilot:gamification:${userId}`, JSON.stringify({ xp: 105 }));
@@ -119,19 +120,62 @@ async function verifyCookieMotion(browser, { WEB, token, user, output }) {
       await levelUp();
       assert.equal(await noticeNode.evaluate(el => el.isConnected), true);
       assert.equal(await notice.count(), 1);
+      const equipNotice = dialog.getByRole('button', { name: 'Equipar gafas en Cookie' });
+      await equipNotice.focus();
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await dialog.evaluate(el => el.contains(document.activeElement)), true, 'El foco queda dentro del panel');
+      await equipNotice.focus();
+      await page.keyboard.press('Enter');
+      await dialog.locator('header [data-cookie-cosmetic="glasses"]').waitFor({ state: 'attached' });
+      await glasses.getByRole('button', { name: 'Quitar gafas' }).waitFor();
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
       await page.locator('[data-cookie-panel-flight]').waitFor({ state: 'detached' });
       assert.equal(await launcher.evaluate(el => el === document.activeElement), true);
+      await launcher.locator('[data-cookie-cosmetic="glasses"]').waitFor({ state: 'attached' });
       if (width === 1440) {
         await page.reload();
         await page.locator('html[data-cookie-startup-ready]').waitFor({ state: 'attached' });
         await launcher.click();
         await dialog.getByText('Nivel 2 de Cookie', { exact: true }).waitFor();
         await dialog.getByText('Recompensas', { exact: true }).click();
-        await glasses.getByText('Desbloqueado', { exact: true }).waitFor();
+        await glasses.getByText('Equipado', { exact: true }).waitFor();
         assert.equal(await notice.count(), 0);
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'detached' });
       }
+      await page.evaluate(userId => {
+        localStorage.setItem(`autopilot:gamification:${userId}`, JSON.stringify({ xp: 4500 }));
+        window.dispatchEvent(new Event('autopilot:xp'));
+      }, user.id);
+      await launcher.click();
+      await dialog.getByText('Nivel 10 de Cookie', { exact: true }).waitFor();
+      await dialog.getByText('Recompensas', { exact: true }).click();
+      for (const name of ['auriculares', 'gorro de graduación', 'bufanda']) {
+        await dialog.getByRole('button', { name: `Equipar ${name}`, exact: true }).click();
+      }
+      const header = dialog.locator('header');
+      await header.locator('[data-cookie-cosmetic="graduation-cap"]').waitFor({ state: 'attached' });
+      await dialog.getByRole('button', { name: 'Equipar corona', exact: true }).click();
+      await header.locator('[data-cookie-cosmetic="crown"]').waitFor({ state: 'attached' });
+      assert.equal(await header.locator('[data-cookie-cosmetic="graduation-cap"]').count(), 0);
+      assert.equal(await header.locator('[data-cookie-cosmetic]').count(), 4);
+      assert.ok(await header.evaluate(el => [...el.querySelectorAll('[data-cookie-cosmetic]')].every(item => {
+        const accessory = item.getBoundingClientRect();
+        const headerBounds = el.getBoundingClientRect();
+        const title = el.querySelector('h2').getBoundingClientRect();
+        return accessory.top >= headerBounds.top && accessory.bottom <= headerBounds.bottom && accessory.right < title.left;
+      })), 'Los accesorios quedan en la cabecera sin tapar el título');
+      await dialog.getByRole('list', { name: 'Recompensas de Cookie' }).evaluate(el => { el.parentElement.scrollTop = 0; });
+      await page.screenshot({ path: path.join(output, `cookie-r5c-panel-${capture}.png`) });
+      await dialog.getByRole('button', { name: 'Quitar gafas', exact: true }).click();
+      await header.locator('[data-cookie-cosmetic="glasses"]').waitFor({ state: 'detached' });
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'detached' });
+      await page.locator('[data-cookie-panel-flight]').waitFor({ state: 'detached' });
+      assert.equal(await launcher.locator('[data-cookie-cosmetic]').count(), 3);
+      await page.screenshot({ path: path.join(output, `cookie-r5c-flotante-${capture}.png`) });
+      console.log(`PASS Cookie R5c ${capture}: equipar, quitar, hueco cabeza y aviso interactivo`);
       console.log(`PASS Cookie R5b ${capture}: progreso, recompensas y aviso de nivel`);
       console.log(`PASS Cookie R5e ${capture}: bienvenida, posición, panel flotante y teclado`);
     } finally {
