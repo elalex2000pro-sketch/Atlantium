@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Sparkles, Trophy } from "lucide-react";
 
 import {
+  claimCookieLevelNotice,
   XP_EVENT,
   type CosmeticReward,
   type LevelInfo,
@@ -19,21 +20,34 @@ interface XpToast {
   leveledUp: boolean;
   info: LevelInfo;
   unlocked?: CosmeticReward[];
+  cookieRewards?: ReturnType<typeof claimCookieLevelNotice>;
 }
 
 /** Aviso flotante cuando se gana EXP o se sube de nivel. */
-export function GamificationToast() {
+export function GamificationToast({ userId, reduceMotion, panelOpen, onCelebrate }: {
+  userId: string;
+  reduceMotion: boolean;
+  panelOpen: boolean;
+  onCelebrate: (happy: boolean) => void;
+}) {
   const [toast, setToast] = useState<XpToast | null>(null);
 
   useEffect(() => {
     const onXp = (event: Event) => {
-      const detail = (event as CustomEvent<Omit<XpToast, "id">>).detail;
-      if (!detail) return;
-      setToast({ id: Date.now(), ...detail });
+      const detail = (event as CustomEvent<Omit<XpToast, "id"> & { userId: string; previousLevel: number }>).detail;
+      if (!detail || detail.userId !== userId) return;
+      const cookieRewards = detail.leveledUp ? claimCookieLevelNotice(userId, detail.previousLevel, detail.level) : null;
+      if (detail.leveledUp && !cookieRewards) return;
+      setToast({ id: Date.now(), ...detail, cookieRewards });
     };
     window.addEventListener(XP_EVENT, onXp);
     return () => window.removeEventListener(XP_EVENT, onXp);
-  }, []);
+  }, [userId]);
+
+  useEffect(() => {
+    onCelebrate(Boolean(toast?.cookieRewards) && !reduceMotion);
+    return () => onCelebrate(false);
+  }, [toast, reduceMotion, onCelebrate]);
 
   useEffect(() => {
     if (!toast) return;
@@ -46,11 +60,13 @@ export function GamificationToast() {
       {toast ? (
         <motion.div
           key={toast.id}
-          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 12, scale: 0.97 }}
-          transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className="fixed bottom-[calc(var(--mobile-nav-offset,0px)+1rem)] left-1/2 z-[90] w-[min(92vw,360px)] -translate-x-1/2 md:bottom-6 md:left-6 md:translate-x-0"
+          exit={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.97 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 28 }}
+          className={panelOpen && toast.leveledUp
+            ? "pointer-events-none fixed left-4 top-[max(1rem,env(safe-area-inset-top))] z-[100] w-[min(92vw,360px)] md:bottom-6 md:left-6 md:top-auto"
+            : "fixed bottom-[calc(var(--mobile-nav-offset,0px)+1rem)] left-1/2 z-[90] w-[min(92vw,360px)] -translate-x-1/2 md:bottom-6 md:left-6 md:translate-x-0"}
           role="status"
           aria-live="polite"
         >
@@ -71,16 +87,21 @@ export function GamificationToast() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-[12px] font-semibold text-slate-800 dark:text-white/90">
                 {toast.leveledUp
-                  ? `¡Nivel ${toast.level}! ${toast.title}`
+                  ? `¡Subiste al nivel ${toast.level}!`
                   : `+${toast.amount} EXP`}
               </p>
               <p className="truncate text-[10.5px] text-slate-500 dark:text-white/40">
                 {toast.leveledUp
                   ? toast.unlocked?.length
                     ? `Desbloqueado: ${toast.unlocked.map((reward) => reward.name).join(", ")}`
-                    : toast.reason
+                    : toast.title
                   : `${toast.reason} · ${toast.info.xp} EXP`}
               </p>
+              {Boolean(toast.cookieRewards?.length) && (
+                <p className="text-[10.5px] text-muted-foreground">
+                  Cookie desbloqueó: {toast.cookieRewards?.map((reward) => reward.name).join(", ")}
+                </p>
+              )}
             </div>
             {!toast.leveledUp ? (
               <span className="shrink-0 text-[10px] font-semibold tabular-nums text-[#0066FF] dark:text-[#8ab9ff]">
