@@ -3,6 +3,7 @@
 import type { MouseEventHandler, ReactNode } from "react";
 import { forwardRef, useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { CookieCosmetics } from "@/components/cookie-cosmetics";
 import { cn } from "@/lib/utils";
 
 type CookieButtonProps = {
@@ -10,6 +11,7 @@ type CookieButtonProps = {
   reduceMotion: boolean;
   className?: string;
   decoration?: ReactNode;
+  outfit?: readonly string[];
 };
 
 export type CookieExpression = "neutral" | "happy" | "thinking" | "surprised" | "sleeping";
@@ -45,11 +47,12 @@ function CookieFace({ expression, blink }: { expression: CookieExpression; blink
 export function CookieOrb({
   reduceMotion,
   decoration,
+  outfit,
   expression = "neutral",
   idle = true,
   greet = false,
   size = "header",
-}: Pick<CookieButtonProps, "reduceMotion" | "decoration"> & { expression?: CookieExpression; idle?: boolean; greet?: boolean; size?: "header" | "floating" }) {
+}: Pick<CookieButtonProps, "reduceMotion" | "decoration" | "outfit"> & { expression?: CookieExpression; idle?: boolean; greet?: boolean; size?: "header" | "floating" }) {
   const systemReducedMotion = useReducedMotion();
   const still = reduceMotion || systemReducedMotion;
   const [blinking, setBlinking] = useState(false);
@@ -86,13 +89,14 @@ export function CookieOrb({
       style={{ background: "radial-gradient(ellipse at 29% 21%, #d7f0ff 0%, #91b4ff80 11%, transparent 32%), radial-gradient(ellipse at 51% 5%, #243ba5 8%, #3d52e5 49%, #3280ef 71%, #72daff 100%)" }}
     >
       <CookieFace expression={expression} blink={blinking && !still} />
+      {outfit?.length ? <CookieCosmetics outfit={outfit} /> : null}
       {decoration}
     </motion.span>
   );
 }
 
 export const CookieButton = forwardRef<HTMLButtonElement, CookieButtonProps & { active?: boolean; celebrating?: boolean }>(function CookieButton({
-  onClick, reduceMotion, className, decoration, active = true, celebrating = false,
+  onClick, reduceMotion, className, decoration, outfit, active = true, celebrating = false,
 }, ref) {
   const [expression, setExpression] = useState<CookieExpression>("neutral");
   useEffect(() => {
@@ -122,7 +126,7 @@ export const CookieButton = forwardRef<HTMLButtonElement, CookieButtonProps & { 
         className,
       )}
     >
-      <CookieOrb reduceMotion={reduceMotion} decoration={decoration} expression={celebrating && !reduceMotion ? "happy" : expression} idle={active} size="floating" />
+      <CookieOrb reduceMotion={reduceMotion} decoration={decoration} outfit={outfit} expression={celebrating && !reduceMotion ? "happy" : expression} idle={active} size="floating" />
     </button>
   );
 });
