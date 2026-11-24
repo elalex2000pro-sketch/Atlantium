@@ -1,17 +1,16 @@
 {
-  "version": "1.6.0",
-  "publishedAt": "2026-11-24T01:14:00Z",
-  "generatedAt": "2026-11-24T01:01:24.65Z",
-  "sizeBytes": 112773764,
+  "version": "1.7.0",
+  "publishedAt": null,
+  "sizeBytes": null,
   "notes": [
-    "Puedes abrir el panel de IA sin salir de la pantalla en la que estás.",
-    "Antes de enviar, eliges qué contexto compartir y puedes revisar el texto; se muestra el proveedor y el tamaño aproximado.",
-    "Tus claves de IA se guardan por proveedor; puedes borrar cada una desde Ajustes.",
-    "Se simplifican varias pantallas y la navegación para encontrar mejor las secciones.",
-    "El temporizador de concentración continúa al cambiar de pantalla y la pizarra se puede crear desde su diálogo.",
-    "Para usar un proveedor remoto, configura tu propia clave en Ajustes. Desde el panel, solo se envía el contexto que elijas al proveedor mostrado.",
-    "El instalador de Windows no está firmado y puede mostrar un aviso de seguridad; el instalador para Mac todavía no se ha probado."
+    "Cookie, tu mascota, tiene cara, parpadea y te saluda al abrir la app. Después se queda abajo a la derecha.",
+    "Al pulsar a Cookie, salta y abre un panel flotante con bordes redondeados, listo para que escribas. Con movimiento reducido, el panel se abre sin salto.",
+    "El panel te saluda por tu nombre y te sugiere preguntas. También puedes pulsar «Preguntar a Cookie» en las tareas del Planificador y en los documentos compatibles de Archivos. Tú revisas qué se comparte antes de enviar.",
+    "Cookie sube de nivel con la experiencia que ya tienes. Puedes desbloquear y equiparle gafas, auriculares, un gorro de graduación, una bufanda y una corona.",
+    "Se actualizó el modelo de Gemini que se usa por defecto. Si un modelo ya no está disponible, la app te indica que elijas otro en Ajustes.",
+    "Para usar un proveedor de IA en línea, configura tu propia clave en Ajustes.",
+    "El instalador de Windows no está firmado y puede mostrar un aviso de seguridad."
   ],
-  "releaseUrl": "https://github.com/elalex2000pro-sketch/academic-autopilot2.0/releases/tag/v1.6.0",
-  "enabled": true
+  "releaseUrl": "https://github.com/elalex2000pro-sketch/academic-autopilot2.0/releases/tag/v1.7.0",
+  "enabled": false
 }
