@@ -192,7 +192,7 @@ async function main() {
       await quickPanel.getByRole('button', { name: 'Revisar envío' }).click();
       await quickPanel.getByText(/Destino: Gemini/).waitFor();
       await quickPanel.getByText('Vista previa · Mensaje actual', { exact: true }).click();
-      await quickPanel.getByText('Consulta breve', { exact: true }).waitFor();
+      await quickPanel.locator('pre').filter({ hasText: /^Consulta breve$/ }).waitFor();
       const history = quickPanel.getByRole('checkbox', { name: 'Mensajes anteriores de esta conversación' });
       await history.uncheck();
       assert.ok(await quickPanel.getByRole('button', { name: 'Enviar mensaje' }).isDisabled());
