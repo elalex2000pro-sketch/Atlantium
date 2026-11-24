@@ -153,6 +153,52 @@ def test_panel_preview_matches_provider_and_rejects_stale_or_foreign_approval(cl
     assert "TEXTO PRIVADO DE BOB" in own.text
 
 
+def test_cookie_task_card_previews_only_own_task_and_requires_approval(client, monkeypatch):
+    alice, _, _ = account(client, "cookie-alice")
+    bob, _, _ = account(client, "cookie-bob")
+    base = "/api/v1/assistant"
+    assert client.put(base + "/profile", headers=alice, json={
+        "provider": "gemini", "api_key": "clave-de-prueba",
+    }).status_code == 200
+
+    def task_id(headers, title):
+        response = client.post("/api/v1/tasks", headers=headers, json={"title": title})
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    chosen = task_id(alice, "TAREA ELEGIDA")
+    task_id(alice, "OTRA TAREA")
+    foreign = task_id(bob, "TAREA AJENA")
+    requests = []
+
+    def provider(request):
+        requests.append(json.loads(request.content)["messages"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Listo"}}]})
+
+    use_transport(monkeypatch, provider)
+    payload = {"provider": "gemini", "message": "Ayúdame a preparar esta tarea.",
+               "context": {"selected": ["tasks"], "task_id": chosen}}
+    preview = client.post(base + "/panel/preview", headers=alice, json=payload)
+    assert preview.status_code == 200, preview.text
+    assert "TAREA ELEGIDA" in preview.text
+    assert "OTRA TAREA" not in preview.text
+    assert client.post(base + "/panel/preview", headers=alice, json={
+        **payload, "context": {"selected": ["tasks"], "task_id": foreign},
+    }).status_code == 404
+    assert requests == []
+
+    unchecked = {**payload, "context": {"selected": [], "task_id": chosen}}
+    assert client.post(base + "/panel/chat", headers=alice, json={
+        **unchecked, "approval": preview.json()["approval"],
+    }).status_code == 409
+    fresh = client.post(base + "/panel/preview", headers=alice, json=unchecked)
+    assert requests == []
+    assert client.post(base + "/panel/chat", headers=alice, json={
+        **unchecked, "approval": fresh.json()["approval"],
+    }).status_code == 200
+    assert requests == [[{"role": "user", "content": payload["message"]}]]
+
+
 def test_preview_warns_about_size_instead_of_truncating(client):
     headers, _, _ = account(client, "contexto-grande")
     response = client.post("/api/v1/assistant/panel/preview", headers=headers, json={

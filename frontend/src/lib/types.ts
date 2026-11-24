@@ -148,6 +148,7 @@ export interface PanelPreviewRequest {
   context: {
     selected: PanelContextItem[];
     history?: { role: "user" | "assistant"; content: string }[];
+    task_id?: string;
     document_id?: string;
     page_text?: string;
     page_label?: string;

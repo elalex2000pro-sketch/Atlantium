@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Send, Wand2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { BookOpen, CalendarDays, FileText, Lightbulb, ListChecks, Send, X } from "lucide-react";
 
+import { CookieOrb } from "@/components/cookie-button";
 import { MessageBubble, TypingBubble } from "@/components/studio/message-bubble";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
 import { getOpenBook, subscribeOpenBook } from "@/lib/book-context";
+import { COOKIE_DOCUMENT_EXTENSION, type CookieCard } from "@/lib/ai-drawer";
 import { errorMessage, tempId } from "@/lib/studio";
 import type {
   AssistantMessage, AssistantStatus, ChatAttachment, DocumentFile, PanelContextItem, PanelPreview, PanelPreviewRequest,
@@ -33,6 +35,14 @@ const CONTEXT_LABELS: Record<PanelContextItem, string> = {
 };
 const CONTEXT_ITEMS = Object.keys(CONTEXT_LABELS) as PanelContextItem[];
 type PanelMessage = AssistantMessage & { role: "user" | "assistant" };
+
+const SUGGESTIONS: { label: string; context: PanelContextItem[]; icon: typeof BookOpen }[] = [
+  { label: "¿Qué tengo mañana?", context: ["tasks", "schedule"], icon: CalendarDays },
+  { label: "¿Qué debería estudiar hoy?", context: ["tasks", "grades"], icon: ListChecks },
+  { label: "Hazme preguntas de repaso", context: [], icon: BookOpen },
+  { label: "Explícame un tema", context: [], icon: Lightbulb },
+  { label: "Resume la página del PDF abierto", context: ["document"], icon: FileText },
+];
 
 function readAttachment(file: File): Promise<ChatAttachment> {
   return new Promise((resolve, reject) => {
@@ -62,25 +72,35 @@ function PreviewSection({ entries }: { entries: NonNullable<PanelPreview["sectio
   ));
 }
 
-export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fromCookie: boolean }) {
+export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion }: {
+  onClose: () => void;
+  fromCookie: boolean;
+  card: CookieCard | null;
+  userName?: string;
+  reduceMotion: boolean;
+}) {
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(card?.kind === "tasks" ? "Ayúdame a preparar esta tarea." : card ? "Resume este documento." : "");
   const [notice, setNotice] = useState("");
   const [messages, setMessages] = useState<PanelMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [selected, setSelected] = useState<PanelContextItem[]>(["history"]);
+  const [selected, setSelected] = useState<PanelContextItem[]>(card ? [card.kind] : ["history"]);
+  const [taskId, setTaskId] = useState(card?.kind === "tasks" ? card.id : "");
   const [files, setFiles] = useState<DocumentFile[] | null>(null);
-  const [documentChoice, setDocumentChoice] = useState("");
+  const [documentChoice, setDocumentChoice] = useState(card?.kind === "document" ? card.id : "");
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [review, setReview] = useState<{ payload: PanelPreviewRequest; preview: PanelPreview } | null>(null);
+  const [review, setReview] = useState<{ payload: PanelPreviewRequest; preview: PanelPreview; confirmed: boolean } | null>(null);
+  const [previewRequested, setPreviewRequested] = useState(Boolean(card));
   const openBook = useSyncExternalStore(subscribeOpenBook, getOpenBook, () => null);
   const scroll = useRef<HTMLDivElement>(null);
   const messageField = useRef<HTMLTextAreaElement>(null);
+  const contextScroll = useRef<HTMLDivElement>(null);
   const missingKey = status && status.provider !== "local" && !status.has_api_key;
   const settingsNeeded = status && !status.configured;
   const busy = sending || reviewing;
+  const documentSelected = selected.includes("document");
 
   useEffect(() => {
     let active = true;
@@ -99,32 +119,48 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
     if (fromCookie) messageField.current?.focus({ preventScroll: true });
   }, [fromCookie]);
 
+  useEffect(() => {
+    if (!documentSelected) return;
+    let active = true;
+    void api.files().then((result) => { if (active) setFiles(result); }, () => {
+      if (active) setNotice("No se pudo cargar la lista de documentos.");
+    });
+    return () => { active = false; };
+  }, [documentSelected]);
+
+  useEffect(() => {
+    const region = contextScroll.current;
+    const section = region?.querySelector("details[open]");
+    if (review && !review.confirmed && region && section) {
+      region.scrollTop += section.getBoundingClientRect().top - region.getBoundingClientRect().top;
+    }
+  }, [review]);
+
   function toggle(item: PanelContextItem, checked: boolean) {
     setReview(null);
+    setPreviewRequested(false);
     setNotice("");
     if (item === "attachments" && !checked) setAttachments([]);
     setSelected((items) => checked ? [...items, item] : items.filter((value) => value !== item));
-    if (item === "document" && checked && !files) {
-      void api.files().then(setFiles, () => setNotice("No se pudo cargar la lista de documentos."));
-    }
   }
 
-  async function refreshStatus() {
+  const refreshStatus = useCallback(async () => {
     try {
       setStatus(await api.assistantStatus());
     } catch {
       setStatus(null);
       setLoadFailed(true);
     }
-  }
+  }, []);
 
-  async function previewMessage() {
+  const previewMessage = useCallback(async (confirmed: boolean) => {
     if (!status?.configured || missingKey || !draft.trim() || busy) return;
     setNotice("");
     setReview(null);
     setReviewing(true);
     try {
       const context: PanelPreviewRequest["context"] = { selected };
+      if (selected.includes("tasks") && taskId) context.task_id = taskId;
       if (selected.includes("history")) {
         if (messages.length > 120) throw new Error("Hay más de 120 mensajes. Desmarca el historial para continuar.");
         context.history = messages.map(({ role, content }) => ({ role, content }));
@@ -147,18 +183,36 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
         context.attachments = await Promise.all(attachments.map(readAttachment));
       }
       const payload = { message: draft.trim(), provider: status.provider, context };
-      setReview({ payload, preview: await api.previewPanelChat(payload) });
+      setReview({ payload, preview: await api.previewPanelChat(payload), confirmed });
     } catch (error) {
       setNotice(errorMessage(error));
       if (error instanceof ApiError && (error.status === 409 || error.status === 400)) await refreshStatus();
     } finally {
       setReviewing(false);
     }
+  }, [status, missingKey, draft, busy, selected, taskId, messages, documentChoice, openBook, attachments, refreshStatus]);
+
+  useEffect(() => {
+    if (!previewRequested || !status?.configured || busy) return;
+    setPreviewRequested(false);
+    void previewMessage(false);
+  }, [previewRequested, status, busy, previewMessage]);
+
+  function chooseSuggestion(suggestion: (typeof SUGGESTIONS)[number]) {
+    setDraft(suggestion.label);
+    setSelected(suggestion.context);
+    setTaskId("");
+    setDocumentChoice(suggestion.context.includes("document") ? "open-pdf" : "");
+    setAttachments([]);
+    setNotice("");
+    setReview(null);
+    setPreviewRequested(true);
+    messageField.current?.focus({ preventScroll: true });
   }
 
   async function send(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!status?.configured || missingKey || !review || busy) return;
+    if (!status?.configured || missingKey || !review?.confirmed || busy) return;
     const { payload, preview } = review;
     const message = payload.message;
     setNotice("");
@@ -185,12 +239,10 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
 
   return (
     <>
-      <header className="flex shrink-0 items-center gap-3 border-b border-border/50 px-4 py-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-          <Wand2 className="h-4 w-4" aria-hidden="true" />
-        </span>
+      <header className="flex shrink-0 items-center gap-3 border-b border-border/50 bg-background/35 px-4 py-3 backdrop-blur-xl">
+        <CookieOrb reduceMotion={reduceMotion} />
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">Panel de IA</h2>
+          <h2 className="text-base font-semibold">Cookie</h2>
           <p className="truncate text-xs text-muted-foreground">
             {status
               ? `Proveedor: ${PROVIDER_LABELS[status.provider] ?? status.provider}`
@@ -201,11 +253,31 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </header>
-      <div ref={scroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" aria-live="polite">
+      <div ref={scroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        {!messages.length && (
+          <div className="space-y-4">
+            <p className="text-lg font-semibold leading-snug">
+              Hola{userName ? `, ${userName}` : ""}, soy Cookie. Pregúntame lo que quieras.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {SUGGESTIONS.filter(({ context }) => !context.includes("document") || openBook).map((suggestion) => (
+                <Button type="button" variant="outline" key={suggestion.label} disabled={busy}
+                  onClick={() => chooseSuggestion(suggestion)}
+                  className="app-glass h-auto min-h-12 justify-start gap-2 whitespace-normal rounded-2xl p-2.5 text-left text-xs sm:text-sm">
+                  <suggestion.icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  {suggestion.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div aria-live="polite" className="space-y-3">
         {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
         {sending && <TypingBubble />}
+        </div>
       </div>
-      <form onSubmit={send} className="max-h-[65%] shrink-0 space-y-2 overflow-y-auto border-t border-border/50 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <form onSubmit={send} className="flex max-h-[65%] shrink-0 flex-col gap-2 border-t border-border/50 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div ref={contextScroll} className="min-h-0 space-y-2 overflow-y-auto">
         {settingsNeeded ? (
           <p role="status" className="text-sm">
             {missingKey ? "Falta tu clave de IA en Ajustes" : "Configura tu motor de IA en Ajustes."}{" "}
@@ -226,15 +298,17 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={selected.includes(item)}
                   onChange={(event) => toggle(item, event.target.checked)} />
-                {CONTEXT_LABELS[item]}
+                {item === "tasks" && taskId ? "Tarea seleccionada" : CONTEXT_LABELS[item]}
               </label>
               {item === "document" && selected.includes(item) && (
                 <select aria-label="Elegir documento o PDF" value={documentChoice}
-                  onChange={(event) => { setDocumentChoice(event.target.value); setReview(null); }}
+                  onChange={(event) => { setDocumentChoice(event.target.value); setReview(null); setPreviewRequested(false); }}
                   className="mt-2 w-full rounded-lg border border-border bg-background p-2 text-sm">
                   <option value="">Elige un documento</option>
                   {openBook && <option value="open-pdf">PDF abierto · pág. {openBook.page}</option>}
-                  {files?.filter((file) => /\.(pdf|txt|md|csv|docx|xlsx|xlsm)$/i.test(file.filename)).map((file) => (
+                  {documentChoice && documentChoice !== "open-pdf" && !files?.some((file) => file.id === documentChoice) &&
+                    <option value={documentChoice}>Documento seleccionado</option>}
+                  {files?.filter((file) => COOKIE_DOCUMENT_EXTENSION.test(file.filename)).map((file) => (
                     <option key={file.id} value={file.id}>{file.filename}</option>
                   ))}
                 </select>
@@ -259,8 +333,9 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
                 />
               )}
               {review?.preview.sections[item] && (
-                <details className="ml-5 mt-1 rounded-lg border border-border/50 p-2 text-xs">
-                  <summary className="cursor-pointer">Vista previa · {CONTEXT_LABELS[item]}</summary>
+                <details key={review.preview.approval} open={review.confirmed ? undefined : true}
+                  className="ml-5 mt-1 rounded-lg border border-border/50 p-2 text-xs">
+                  <summary className="cursor-pointer">Vista previa · {item === "tasks" && taskId ? "Tarea seleccionada" : CONTEXT_LABELS[item]}</summary>
                   <PreviewSection entries={review.preview.sections[item]} />
                 </details>
               )}
@@ -270,34 +345,36 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
         {review && (
           <div role="status" className="space-y-1 rounded-lg border border-border/50 p-2 text-xs">
             <p>Destino: {PROVIDER_LABELS[review.preview.provider] ?? review.preview.provider} · {review.preview.model}</p>
+            {!review.confirmed && <p>Revisa el contexto antes de habilitar el envío.</p>}
             <p>{review.preview.characters.toLocaleString("es")} caracteres de texto
               {review.preview.image_bytes > 0 ? ` · ≈ ${Math.ceil(review.preview.image_bytes / 1024)} KB de imágenes` : ""}</p>
             {(review.preview.characters > 24_000 || review.preview.image_bytes > 2 * 1024 * 1024) && (
               <p>El envío es grande. Puedes desmarcar elementos y revisarlo otra vez.</p>
             )}
-            <details>
+            <details key={review.preview.approval} open={review.confirmed ? undefined : true}>
               <summary className="cursor-pointer">Vista previa · Mensaje actual</summary>
               <PreviewSection entries={review.preview.sections.message ?? []} />
             </details>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        </div>
+        <div className="app-glass flex shrink-0 flex-wrap items-end justify-end gap-1.5 rounded-[1.5rem] p-2">
           <textarea
             ref={messageField}
             aria-label="Mensaje para la IA"
             rows={2}
             maxLength={4000}
             value={draft}
-            onChange={(event) => { setDraft(event.target.value); setReview(null); }}
+            onChange={(event) => { setDraft(event.target.value); setReview(null); setPreviewRequested(false); }}
             readOnly={busy}
             placeholder="Escribe tu mensaje"
-            className="min-w-0 flex-1 resize-none rounded-xl border border-border bg-background/50 p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-[8rem] flex-1 resize-none rounded-2xl bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <Button type="button" variant="outline" onClick={() => void previewMessage()}
+          <Button type="button" variant="outline" className="rounded-full" onClick={() => void previewMessage(true)}
             disabled={!status?.configured || Boolean(missingKey) || !draft.trim() || busy}>
             {reviewing ? "Revisando…" : "Revisar envío"}
           </Button>
-          <Button type="submit" size="icon" aria-label="Enviar mensaje" disabled={!review || busy}>
+          <Button type="submit" size="icon" className="rounded-full" aria-label="Enviar mensaje" disabled={!review?.confirmed || busy}>
             <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>

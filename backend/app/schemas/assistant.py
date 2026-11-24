@@ -54,6 +54,7 @@ class PanelContext(BaseModel):
 
     selected: list[PanelContextItem] = Field(default_factory=list, max_length=6)
     history: list[PanelHistoryMessage] = Field(default_factory=list, max_length=120)
+    task_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
     page_text: str | None = Field(default=None, max_length=48_000)
     page_label: str | None = Field(default=None, max_length=300)
