@@ -421,7 +421,7 @@
 .app-shell {
   --mobile-nav-offset: calc(var(--mobile-nav-height) + 1rem + env(safe-area-inset-bottom, 0px));
   --mobile-header-height: calc(113px + env(safe-area-inset-top, 0px));
-  --cookie-gutter: calc(4.5rem + env(safe-area-inset-right, 0px));
+  --cookie-gutter: calc(5rem + env(safe-area-inset-right, 0px));
 }
 
 /* Los controles del diálogo tienen prioridad sobre el acceso flotante. */

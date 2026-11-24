@@ -344,7 +344,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               setAiMode("cookie");
             }}
             className={cn(
-              "cookie-launcher fixed right-[calc(var(--shell-right-rail,0px)+1rem+env(safe-area-inset-right,0px))] z-[35] h-12 w-12",
+              "cookie-launcher fixed right-[calc(var(--shell-right-rail,0px)+1rem+env(safe-area-inset-right,0px))] z-[35] h-14 w-14",
               isBookReader ? "bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]" : "bottom-[calc(var(--mobile-nav-offset)+0.5rem)]",
               "md:bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]",
               aiMode && "invisible",
@@ -432,7 +432,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AnimatePresence>
         {aiMode === "cookie" && cookieOrigin && !reduceMotion && (
           <motion.div key="cookie-panel-flight" data-cookie-panel-flight aria-hidden="true"
-            className="pointer-events-none fixed z-[96] flex h-12 w-12 translate-x-1/2 translate-y-1/2 items-center justify-center"
+            className="pointer-events-none fixed z-[96] flex h-14 w-14 translate-x-1/2 translate-y-1/2 items-center justify-center"
             style={{ right: cookieOrigin.right, bottom: cookieOrigin.bottom }}>
             <motion.div
               initial={{ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 }}
@@ -442,7 +442,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               exit={{ x: [-52, -22, 0, 0], y: [-105, -75, 0, 0], opacity: [0, 1, 1, 1],
                 scaleX: [1, 0.94, 1.12, 1], scaleY: [1, 1.13, 0.86, 1],
                 transition: { duration: 0.31, times: [0, 0.35, 0.81, 1], ease: "easeInOut" } }}>
-              <CookieOrb expression="happy" reduceMotion={false} idle={false} />
+              <CookieOrb expression="happy" reduceMotion={false} idle={false} size="floating" />
             </motion.div>
           </motion.div>
         )}

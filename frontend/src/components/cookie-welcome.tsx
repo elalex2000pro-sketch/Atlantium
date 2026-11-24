@@ -88,7 +88,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
   const y = place.y - window.innerHeight / 2;
   return (
     <div data-cookie-welcome={reduced ? "corner" : "center"} className="pointer-events-none fixed inset-0 z-[36]">
-      <div className="absolute h-12 w-12 -translate-x-1/2 -translate-y-1/2"
+      <div className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2"
         style={reduced ? { left: place.x, top: place.y } : { left: "50%", top: "50%" }}>
         <AnimatePresence>
           {greeting && (
@@ -103,7 +103,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
         </AnimatePresence>
         {!reduced && (
           <motion.button type="button" aria-label="Saltar saludo de Cookie"
-            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+            className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             initial={{ scale: 0 }}
             animate={greeting
               ? { scale: [0, 2.35, 2.05, 2.15] }
@@ -115,7 +115,7 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
               finish();
               requestAnimationFrame(() => anchor.current?.focus({ preventScroll: true }));
             }}>
-            <CookieOrb reduceMotion={false} expression={greeting ? "neutral" : "happy"} idle={greeting} greet={greeting} />
+            <CookieOrb reduceMotion={false} expression={greeting ? "neutral" : "happy"} idle={greeting} greet={greeting} size="floating" />
           </motion.button>
         )}
       </div>
