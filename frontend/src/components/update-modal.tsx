@@ -48,6 +48,10 @@ type Phase =
 const CHECK_DELAY_MS = 2400;
 const DOWNLOAD_DURATION_MS = 5600;
 
+function signalStartupCheckComplete() {
+  document.documentElement.dataset.cookieStartupReady = "true";
+}
+
 /**
  * Punto de entrada único de las actualizaciones.
  *
@@ -72,6 +76,7 @@ export function UpdateModal() {
  */
 function WebUpdateModal() {
   const [mounted, setMounted] = useState(false);
+  const [startupChecked, setStartupChecked] = useState(false);
   const [phase, setPhase] = useState<Phase>("hidden");
   const [update, setUpdate] = useState<AppUpdate | null>(null);
   const [channel, setChannel] = useState<UpdateChannel>("web");
@@ -131,10 +136,14 @@ function WebUpdateModal() {
   useEffect(() => {
     if (!mounted) return;
     const timer = window.setTimeout(() => {
-      void runCheck(false);
+      void runCheck(false).finally(() => setStartupChecked(true));
     }, CHECK_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [mounted, runCheck]);
+
+  useEffect(() => {
+    if (startupChecked) signalStartupCheckComplete();
+  }, [startupChecked]);
 
   // Comprobación manual: se puede lanzar con requestUpdateCheck() o con el
   // evento desde Ajustes sin acoplar el modal a esa pantalla.
@@ -804,6 +813,7 @@ function WebUpdateModal() {
  */
 function DesktopUpdateToast() {
   const [mounted, setMounted] = useState(false);
+  const [startupChecked, setStartupChecked] = useState(false);
   const [state, setState] = useState<DesktopUpdaterState | null>(null);
   const [manual, setManual] = useState(false);
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
@@ -815,7 +825,10 @@ function DesktopUpdateToast() {
   useEffect(() => {
     setMounted(true);
     const updater = getDesktopUpdater();
-    if (!updater) return;
+    if (!updater) {
+      setStartupChecked(true);
+      return;
+    }
 
     let active = true;
     updater
@@ -824,7 +837,8 @@ function DesktopUpdateToast() {
         // Si un evento llegó antes que la respuesta, ese estado es más nuevo.
         if (active) setState((current) => current ?? next);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (active) setStartupChecked(true); });
 
     const unsubscribe = updater.onState((next) => {
       if (!active) return;
@@ -841,6 +855,10 @@ function DesktopUpdateToast() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (startupChecked) signalStartupCheckComplete();
+  }, [startupChecked]);
 
   // La comprobación manual de Ajustes usa el mismo evento que en web, pero
   // aquí se resuelve contra electron-updater.
@@ -941,6 +959,7 @@ function DesktopUpdateToast() {
   return createPortal(
     <div
       className="fixed bottom-20 right-3 z-[120] w-[calc(100vw-1.5rem)] max-w-[380px] sm:bottom-5 sm:right-5"
+      data-cookie-startup-overlay
       role="status"
       aria-live="polite"
     >

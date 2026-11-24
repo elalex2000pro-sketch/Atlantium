@@ -85,6 +85,7 @@ async function main() {
   execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
   const { access_token: token } = await request('/auth/register', null, 'POST', { email: `smoke-${Date.now()}@example.com`, password: 'SmokeRouteTest123', full_name: 'Usuario de humo' });
   const user = await request('/auth/me', token);
+  await require('./cookie-motion-e2e.cjs').verifyCookieMotion(browser, { WEB, token, user, output });
   const group = await request('/classes', token, 'POST', { name: 'Clase de humo' });
   const office = await request('/office/documents', token, 'POST', { title: 'Documento de humo', content: '<h1>Documento de humo</h1><p>Contenido persistente.</p>' });
   await request('/notebooks', token, 'POST', { title: 'Cuaderno de humo' });
@@ -112,7 +113,7 @@ async function main() {
   const reports = [];
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport, serviceWorkers: 'block', permissions: ['microphone'], reducedMotion: 'no-preference' });
-    await context.addInitScript(({ token, user }) => { localStorage.setItem('autopilot_token', token); localStorage.setItem('autopilot_user', JSON.stringify(user)); localStorage.setItem('hasCompletedOnboarding_v1', 'true'); }, { token, user });
+    await context.addInitScript(({ token, user }) => { localStorage.setItem('autopilot_token', token); localStorage.setItem('autopilot_user', JSON.stringify(user)); localStorage.setItem('hasCompletedOnboarding_v1', 'true'); sessionStorage.setItem(`atlantium:cookie-welcome:${user.id}`, '1'); }, { token, user });
     const page = await context.newPage(); const errors = []; let current = 'startup';
     function watchErrors(view) {
       view.on('console', message => { if (message.type() === 'error') errors.push(`${current}: console ${message.text()}`); });
