@@ -88,14 +88,16 @@ export function CookieWelcome({ anchor, userId, name, reduced, panelOpen }: {
   const y = place.y - window.innerHeight / 2;
   return (
     <div data-cookie-welcome={reduced ? "corner" : "center"} className="pointer-events-none fixed inset-0 z-[36]">
-      <div className="absolute -translate-x-1/2 -translate-y-1/2"
+      <div className="absolute h-12 w-12 -translate-x-1/2 -translate-y-1/2"
         style={reduced ? { left: place.x, top: place.y } : { left: "50%", top: "50%" }}>
         <AnimatePresence>
           {greeting && (
             <motion.div role="status" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-              className={`app-glass absolute bottom-full mb-8 max-w-[calc(100vw-2rem)] whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium shadow-lg ${reduced ? "right-0" : "left-1/2 -translate-x-1/2"}`}>
-              Hola{name ? `, ${name}` : ""}, ¿qué tal?
+              className={`absolute bottom-full mb-6 w-max max-w-[calc(100vw-2rem)] ${reduced ? "right-0" : "left-1/2 -translate-x-1/2"}`}>
+              <div className="app-glass rounded-2xl px-4 py-2 text-center text-sm font-medium shadow-lg [overflow-wrap:anywhere]">
+                Hola{name ? `, ${name}` : ""}, ¿qué tal?
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

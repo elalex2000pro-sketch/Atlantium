@@ -82,10 +82,14 @@ async function main() {
   await require('./interface-style-e2e.cjs').verifyInterfaceStyle(browser, { WEB, request });
   console.log('PASS appearance: onboarding, selector and persistence');
   if (process.argv.includes('--appearance-only')) return;
-  execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
+  const cookieMotionOnly = process.argv.includes('--cookie-motion-only');
+  if (!cookieMotionOnly) {
+    execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
+  }
   const { access_token: token } = await request('/auth/register', null, 'POST', { email: `smoke-${Date.now()}@example.com`, password: 'SmokeRouteTest123', full_name: 'Usuario de humo' });
   const user = await request('/auth/me', token);
   await require('./cookie-motion-e2e.cjs').verifyCookieMotion(browser, { WEB, token, user, output });
+  if (cookieMotionOnly) return;
   const group = await request('/classes', token, 'POST', { name: 'Clase de humo' });
   const office = await request('/office/documents', token, 'POST', { title: 'Documento de humo', content: '<h1>Documento de humo</h1><p>Contenido persistente.</p>' });
   await request('/notebooks', token, 'POST', { title: 'Cuaderno de humo' });

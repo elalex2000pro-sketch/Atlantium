@@ -381,8 +381,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-label={quickAiExpanded ? "Panel de IA" : "IA Studio"}
               tabIndex={-1}
               className={cn(
-                "flex w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-white/15 bg-literal-f4f4f7/92 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10 dark:bg-literal-0b0f18/94",
-                quickAiExpanded ? "h-full max-h-[48rem] origin-bottom-right rounded-[24px] border" : "h-dvh border-l",
+                "flex w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-white/15 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10",
+                quickAiExpanded
+                  ? "h-full max-h-[48rem] origin-bottom-right rounded-[24px] border bg-background/95"
+                  : "h-dvh border-l bg-literal-f4f4f7/92 dark:bg-literal-0b0f18/94",
               )}
               style={quickAiExpanded && cookieOrigin ? {
                 transformOrigin: `calc(100% + max(0.75rem, env(safe-area-inset-right)) - ${cookieOrigin.right}px) calc(100% + max(0.75rem, env(safe-area-inset-bottom)) - ${cookieOrigin.bottom}px)`,
