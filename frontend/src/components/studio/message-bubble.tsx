@@ -1,9 +1,11 @@
 "use client";
 
 import { memo, useState } from "react";
+import Link from "next/link";
 import { Check, FileText, Wand2, X } from "lucide-react";
 
 import { attachmentCaption } from "@/lib/studio";
+import { GEMINI_MODEL_UNAVAILABLE } from "@/lib/ai-models";
 import type { AssistantMessage, ChatAttachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +97,9 @@ function MessageBubbleComponent({ message }: { message: AssistantMessage }) {
           )}
           {message.content && (
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          )}
+          {!isUser && message.source === "error" && message.content === GEMINI_MODEL_UNAVAILABLE && (
+            <Link href="/settings?tab=integrations" className="underline">Elegir otro modelo en Ajustes</Link>
           )}
           <div
             className={cn(

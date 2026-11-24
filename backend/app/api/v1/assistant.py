@@ -190,7 +190,7 @@ async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: D
         raise
     except Exception as exc:  # noqa: BLE001 - solo se devuelve el mensaje seguro
         log_provider_error(logger, profile.provider, exc)
-        raise HTTPException(status_code=502, detail=provider_error_message(exc)) from None
+        raise HTTPException(status_code=502, detail=provider_error_message(exc, profile.provider)) from None
 
     reply = result.get("content")
     if not isinstance(reply, str) or not reply.strip():

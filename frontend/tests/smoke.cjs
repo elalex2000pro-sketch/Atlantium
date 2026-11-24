@@ -358,12 +358,13 @@ async function main() {
       const studioCookie = await quickTrigger.boundingBox();
       assert.ok(studioSend.x + studioSend.width <= studioCookie.x);
       const model = page.getByLabel('Modelo de Gemini');
+      await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-3.8-flash');
       await model.selectOption('gemini-3.1-pro-preview');
       await page.getByText('Modelo de IA actualizado:', { exact: false }).waitFor();
       await page.reload();
       await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-3.1-pro-preview');
       let providerReplied = false;
-      const reply = 'Este modelo no está disponible con tu clave. Puedes volver al modelo por defecto.';
+      const reply = 'Este modelo ya no está disponible. Elige otro en Ajustes';
       await page.route('**/api/v1/assistant/messages?*', route => route.fulfill({ json: providerReplied ? [{ id: 'mock-provider-error', role: 'assistant', content: reply, source: 'error', created_at: new Date().toISOString(), document_id: null }] : [] }));
       await page.route('**/api/v1/assistant/chat', route => {
         providerReplied = true;
@@ -371,9 +372,10 @@ async function main() {
       });
       await page.getByLabel('Mensaje para la IA').fill('Consulta de prueba');
       await page.getByRole('button', { name: 'Enviar mensaje', exact: true }).click();
-      await page.getByText('Este modelo no está disponible con tu clave.', { exact: false }).waitFor();
+      await page.getByText(reply, { exact: true }).waitFor();
+      assert.equal(await page.getByRole('link', { name: 'Elegir otro modelo en Ajustes' }).getAttribute('href'), '/settings?tab=integrations');
       await page.getByRole('button', { name: 'Modelo por defecto', exact: true }).click();
-      await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-2.5-flash');
+      await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-3.8-flash');
       await page.unroute('**/api/v1/assistant/chat');
       await page.unroute('**/api/v1/assistant/messages?*');
       await request('/assistant/profile', token, 'PUT', { provider: 'local', model: '' });

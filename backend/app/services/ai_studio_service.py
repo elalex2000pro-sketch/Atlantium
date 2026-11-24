@@ -208,7 +208,7 @@ async def generate(
         provider = ai_gateway.active_provider(user)
         log_provider_error(logger, provider, exc)
         if provider == "gemini":
-            raise AiProviderError(provider_error_message(exc)) from None
+            raise AiProviderError(provider_error_message(exc, provider)) from None
         source = "heuristic"
         if kind == "summary":
             data = _heuristic_summary(normalize_filename(document.filename), text)

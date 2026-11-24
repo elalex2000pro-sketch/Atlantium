@@ -2,6 +2,7 @@
 import json
 
 import httpx
+import pytest
 
 from app.services import ai_service
 from test_ai_gateway import use_transport
@@ -45,6 +46,7 @@ def test_panel_sends_only_the_current_message(client, monkeypatch):
         response = client.post(route, headers=headers, json={**payload, "approval": preview.json()["approval"]})
         assert response.status_code == 200, response.text
         assert response.json()["reply"] == "Respuesta simulada"
+        assert requests[-1]["model"] == preview.json()["model"] == "gemini-3.8-flash"
         assert requests[-1]["messages"] == [{"role": "user", "content": message}]
         assert "tools" not in requests[-1]
 
@@ -62,6 +64,35 @@ def test_panel_sends_only_the_current_message(client, monkeypatch):
     assert len(requests) == 2
     history = client.get(base + "/messages", headers=headers).json()
     assert [entry["content"] for entry in history] == ["HISTORIAL PRIVADO"]
+
+
+@pytest.mark.parametrize(("status", "message", "expected"), [
+    (404, "Not found", "Este modelo ya no está disponible. Elige otro en Ajustes"),
+    (400, "Model gemini-3.8-flash is no longer available", "Este modelo ya no está disponible. Elige otro en Ajustes"),
+    (400, "Invalid request", "Este modelo no está disponible con tu clave o no admite esta solicitud."),
+])
+def test_panel_replaces_legacy_gemini_and_distinguishes_errors(client, monkeypatch, status, message, expected):
+    headers, _, _ = account(client, "gemini-legacy")
+    base = "/api/v1/assistant"
+    saved = client.put(base + "/profile", headers=headers, json={
+        "provider": "gemini", "api_key": "clave-de-prueba", "model": "gemini-2.5-pro",
+    })
+    assert saved.status_code == 200
+    assert saved.json()["model"] == "gemini-3.8-flash"
+    assert saved.json()["has_api_key"]
+
+    def provider(request):
+        assert request.headers["Authorization"] == "Bearer clave-de-prueba"
+        assert json.loads(request.content)["model"] == "gemini-3.8-flash"
+        return httpx.Response(status, json={"error": {"message": message}})
+
+    use_transport(monkeypatch, provider)
+    payload = {"provider": "gemini", "message": "Hola"}
+    preview = client.post(base + "/panel/preview", headers=headers, json=payload).json()
+    response = client.post(base + "/panel/chat", headers=headers, json={**payload, "approval": preview["approval"]})
+    assert response.status_code == 502
+    assert response.json()["detail"].startswith(expected)
+    assert "clave-de-prueba" not in response.text
 
 
 def test_panel_blocks_changed_provider_and_missing_key(client, monkeypatch):
