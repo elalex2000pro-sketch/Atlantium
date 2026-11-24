@@ -167,15 +167,37 @@ async function main() {
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: '' });
       await visit('/planner');
       await page.locator('main').evaluate(element => { element.dataset.aiSmoke = 'preserved'; });
-      const quickTrigger = page.getByRole('button', { name: 'Abrir panel de IA', exact: true });
-      await quickTrigger.click();
+      const quickTrigger = page.getByRole('button', { name: 'Abrir Cookie, tu asistente de IA', exact: true });
+      const orb = quickTrigger.locator('[data-cookie-orb]');
+      const bounds = await quickTrigger.boundingBox();
+      assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width);
+      await orb.evaluate(element => {
+        const start = getComputedStyle(element).transform;
+        return new Promise((resolve, reject) => {
+          const deadline = performance.now() + 4000;
+          function sample(now) {
+            if (getComputedStyle(element).transform !== start) resolve();
+            else if (now > deadline) reject(new Error('Cookie no se anima en reposo'));
+            else requestAnimationFrame(sample);
+          }
+          requestAnimationFrame(sample);
+        });
+      });
+      if (process.env.SMOKE_OUTPUT) await page.screenshot({ path: path.join(output, `cookie-${viewport.width}.png`) });
+      await page.keyboard.press('Tab');
+      await quickTrigger.focus();
+      assert.equal(await quickTrigger.evaluate(element => getComputedStyle(element).outlineStyle), 'solid');
+      await page.keyboard.press('Enter');
       const quickPanel = page.getByRole('dialog', { name: 'Panel de IA', exact: true });
       await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
+      assert.equal(await quickTrigger.getAttribute('aria-expanded'), 'true');
       await quickPanel.getByText('Falta tu clave de IA en Ajustes', { exact: false }).waitFor();
       assert.equal(await quickPanel.getByRole('link', { name: 'Abrir Ajustes de IA' }).getAttribute('href'), '/settings?tab=integrations');
       assert.ok(await quickPanel.getByRole('button', { name: 'Enviar mensaje' }).isDisabled());
       await page.keyboard.press('Escape');
       await quickPanel.waitFor({ state: 'hidden' });
+      assert.equal(await quickTrigger.getAttribute('aria-expanded'), 'false');
+      assert.equal(await quickTrigger.evaluate(element => document.activeElement === element), true);
       assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: 'clave-simulada' });
       let quickRequest;
@@ -183,7 +205,7 @@ async function main() {
         quickRequest = route.request().postDataJSON();
         return route.fulfill({ json: { reply: 'Respuesta del panel simulado', source: 'ai', created_at: new Date().toISOString() } });
       });
-      await quickTrigger.click();
+      await page.keyboard.press('Space');
       await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
       assert.equal(await quickPanel.getByRole('checkbox', { name: 'Mensajes anteriores de esta conversación' }).isChecked(), true);
       assert.equal(await quickPanel.getByRole('checkbox', { name: 'Tareas pendientes' }).isChecked(), false);
@@ -210,6 +232,42 @@ async function main() {
       assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
       await page.unroute('**/api/v1/assistant/panel/chat');
       await request('/assistant/profile', token, 'PUT', { provider: 'gemini', api_key: '' });
+      const assertCookieStill = () => orb.evaluate(async element => {
+        const start = performance.now();
+        while (performance.now() - start < 600) {
+          const transform = getComputedStyle(element).transform;
+          if (transform !== 'none' && transform !== 'matrix(1, 0, 0, 1, 0, 0)') {
+            throw new Error('Cookie se animó con movimiento reducido');
+          }
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+      });
+      await page.evaluate(() => {
+        const key = 'academic-autopilot-preferences';
+        localStorage.setItem(key, JSON.stringify({
+          ...JSON.parse(localStorage.getItem(key) ?? '{}'),
+          animationLevel: 'reduced',
+        }));
+      });
+      await page.reload();
+      await page.waitForFunction(() => document.documentElement.dataset.animations === 'reduced');
+      await assertCookieStill();
+      await quickTrigger.click();
+      await quickPanel.getByText('Proveedor: Gemini', { exact: true }).waitFor();
+      await quickPanel.getByRole('button', { name: 'Cerrar Cookie, tu asistente de IA' }).click();
+      await quickPanel.waitFor({ state: 'hidden' });
+      await page.evaluate(() => {
+        const key = 'academic-autopilot-preferences';
+        localStorage.setItem(key, JSON.stringify({
+          ...JSON.parse(localStorage.getItem(key) ?? '{}'),
+          animationLevel: 'standard',
+        }));
+      });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.reload();
+      await page.waitForFunction(() => document.documentElement.dataset.animations === 'standard');
+      await assertCookieStill();
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
       console.log(`PASS ${viewport.width} panel de IA: proveedor, clave, texto y pantalla conservada`);
 
       // Persist the model through the real test API; simulate provider replies only.
