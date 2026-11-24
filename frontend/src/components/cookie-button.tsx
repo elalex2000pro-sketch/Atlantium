@@ -11,15 +11,29 @@ type CookieButtonProps = {
   decoration?: ReactNode;
 };
 
-export function CookieButton({
-  onClick,
+export function CookieOrb({
   reduceMotion,
-  className,
   decoration,
-}: CookieButtonProps) {
+}: Pick<CookieButtonProps, "reduceMotion" | "decoration">) {
   const systemReducedMotion = useReducedMotion();
   const still = reduceMotion || systemReducedMotion;
 
+  return (
+    <motion.span
+      aria-hidden="true"
+      data-cookie-orb
+      initial={{ scale: 1 }}
+      animate={{ scale: still ? 1 : [1, 1.075, 1] }}
+      transition={still ? { duration: 0 } : { duration: 3.6, ease: "easeInOut", repeat: Infinity }}
+      className="pointer-events-none relative h-9 w-9 shrink-0 rounded-full border border-white/50 bg-blue-600/80 shadow-[inset_0_-3px_6px_#123e9d,0_2px_7px_#2678ed55] backdrop-blur-sm"
+      style={{ backgroundImage: "radial-gradient(circle at 33% 24%, #e5f8ff 0%, #72cbff 22%, #3489ff 48%, #1252c2 86%)" }}
+    >
+      {decoration}
+    </motion.span>
+  );
+}
+
+export function CookieButton({ onClick, reduceMotion, className, decoration }: CookieButtonProps) {
   return (
     <button
       type="button"
@@ -32,17 +46,7 @@ export function CookieButton({
         className,
       )}
     >
-      <motion.span
-        aria-hidden="true"
-        data-cookie-orb
-        initial={{ scale: 1 }}
-        animate={{ scale: still ? 1 : [1, 1.075, 1] }}
-        transition={still ? { duration: 0 } : { duration: 3.6, ease: "easeInOut", repeat: Infinity }}
-        className="pointer-events-none relative h-9 w-9 shrink-0 rounded-full border border-white/50 bg-blue-600/80 shadow-[inset_0_-3px_6px_#123e9d,0_2px_7px_#2678ed55] backdrop-blur-sm"
-        style={{ backgroundImage: "radial-gradient(circle at 33% 24%, #e5f8ff 0%, #72cbff 22%, #3489ff 48%, #1252c2 86%)" }}
-      >
-        {decoration}
-      </motion.span>
+      <CookieOrb reduceMotion={reduceMotion} decoration={decoration} />
     </button>
   );
 }

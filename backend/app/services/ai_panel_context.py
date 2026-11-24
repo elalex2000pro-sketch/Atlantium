@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.models.document import Document
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.assistant import PanelContext, PanelPreview, PanelPreviewRequest
 from app.services import ai_gateway, ai_service, ai_studio_service
@@ -76,9 +77,18 @@ async def build_preview(
     sections: dict[str, list[dict]] = {}
     if "history" in selected:
         sections["history"] = [entry.model_dump() for entry in context.history]
-    if selected & {"tasks", "schedule", "grades"}:
+    if "tasks" in selected and context.task_id:
+        task = await db.scalar(select(Task).where(Task.id == context.task_id, Task.user_id == user.id))
+        if task is None:
+            raise HTTPException(status_code=404, detail="Tarea no encontrada.")
+        due = task.due_at.isoformat() if task.due_at else "sin fecha"
+        sections["tasks"] = [_text(
+            f"Tarea seleccionada: {task.title}\nEntrega: {due}\nPrioridad: {task.priority.value}"
+            + (f"\nDescripción: {task.description}" if task.description else ""),
+        )]
+    if selected & {"schedule", "grades"} or ("tasks" in selected and not context.task_id):
         data = await ai_service.build_context(db, user)
-        if "tasks" in selected:
+        if "tasks" in selected and not context.task_id:
             rows = [
                 f"- {task['title']} | entrega: {task['due_at'] or 'sin fecha'} | prioridad: {task['priority']}"
                 for task in data["tasks"]

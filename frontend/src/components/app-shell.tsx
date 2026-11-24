@@ -23,7 +23,7 @@ import { OverdueTaskPrompt } from "@/components/overdue-task-prompt";
 import { ThemeCycleButton } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/navigation/sidebar";
 import { Button } from "@/components/ui/button";
-import { AI_DRAWER_EVENT, QUICK_AI_DRAWER_EVENT } from "@/lib/ai-drawer";
+import { AI_DRAWER_EVENT, QUICK_AI_DRAWER_EVENT, type CookieCard } from "@/lib/ai-drawer";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 import {
   SECONDARY_NAV_ITEMS,
@@ -77,6 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isPublic = pathname === "/login";
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
+  const [cookieCard, setCookieCard] = useState<CookieCard | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
   const cookieTrigger = useRef<HTMLButtonElement | null>(null);
   const quickAiExpanded = aiMode === "cookie" || aiMode === "quick";
@@ -98,7 +99,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // El drawer de IA se abre desde cualquier pantalla mediante un evento.
   useEffect(() => {
     const open = () => setAiMode("studio");
-    const openQuick = () => setAiMode("quick");
+    const openQuick = (event: Event) => {
+      const detail = (event as CustomEvent<{ card: CookieCard; trigger: HTMLButtonElement }>).detail;
+      setCookieCard(detail?.card ?? null);
+      if (detail) cookieTrigger.current = detail.trigger;
+      setAiMode(detail ? "cookie" : "quick");
+    };
     window.addEventListener(AI_DRAWER_EVENT, open);
     window.addEventListener(QUICK_AI_DRAWER_EVENT, openQuick);
     return () => {
@@ -321,6 +327,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             reduceMotion={reduceMotion}
             onClick={(event) => {
               cookieTrigger.current = event.currentTarget;
+              setCookieCard(null);
               setAiMode("cookie");
             }}
             className={cn(
@@ -381,7 +388,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 }
               >
-                {quickAiExpanded ? <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} /> : <IAStudio embedded onClose={closeAi} />}
+                {quickAiExpanded ? (
+                  <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} card={aiMode === "cookie" ? cookieCard : null}
+                    userName={user.full_name?.trim().split(/\s+/)[0]} reduceMotion={reduceMotion} />
+                ) : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>
           </motion.div>

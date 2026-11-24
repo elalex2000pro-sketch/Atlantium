@@ -1,5 +1,7 @@
 "use client";
 
+import { askCookie, COOKIE_DOCUMENT_EXTENSION } from "@/lib/ai-drawer";
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -296,15 +298,24 @@ const FileRow = memo(function FileRow({
   const filename = normalizeFilename(file.filename);
   return (
     <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm">
-      <span className="flex min-w-0 items-center gap-2">
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium" title={filename}>
-          {filename}
+      <div className="min-w-0">
+        <span className="flex min-w-0 items-center gap-2">
+          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium" title={filename}>
+            {filename}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {formatBytes(file.size_bytes)}
+          </span>
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {formatBytes(file.size_bytes)}
-        </span>
-      </span>
+        {COOKIE_DOCUMENT_EXTENSION.test(filename) && (
+          <button type="button" aria-haspopup="dialog"
+            onClick={(event) => askCookie({ kind: "document", id: file.id }, event.currentTarget)}
+            className="mt-1 min-h-7 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+            Preguntar a Cookie
+          </button>
+        )}
+      </div>
       <div className="flex shrink-0 items-center gap-1">
         <AddToNotebookButton documentId={file.id} label="" size="icon" />
         {BOOK_EXTENSIONS.has(extensionOf(filename)) && (

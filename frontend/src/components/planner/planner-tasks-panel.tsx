@@ -1,5 +1,7 @@
 "use client";
 
+import { askCookie } from "@/lib/ai-drawer";
+
 import type * as React from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Check, CheckCircle2, Clock, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -211,6 +213,11 @@ export function PlannerTasksPanel({
                                 {PRIORITY_LABEL[task.priority] ?? task.priority}
                               </span>
                             </div>
+                            <button type="button" aria-haspopup="dialog"
+                              onClick={(event) => askCookie({ kind: "tasks", id: task.id }, event.currentTarget)}
+                              className="mt-1 min-h-7 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+                              Preguntar a Cookie
+                            </button>
                           </div>
 
                           <button
