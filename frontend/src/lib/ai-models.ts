@@ -7,15 +7,13 @@ export interface GeminiModelOption {
   retired?: boolean;
 }
 
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+export const GEMINI_MODEL_UNAVAILABLE = "Este modelo ya no está disponible. Elige otro en Ajustes";
 
 export const GEMINI_MODEL_OPTIONS: GeminiModelOption[] = [
-  { value: DEFAULT_GEMINI_MODEL, label: "Gemini 2.5 Flash · rápido y actual" },
-  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash · tareas complejas y agentes" },
+  { value: DEFAULT_GEMINI_MODEL, label: "Gemini 3.8 Flash · modelo por defecto" },
   { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash · programación y razonamiento" },
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview · razonamiento avanzado" },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro · razonamiento avanzado" },
-  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite · el más ligero" },
   {
     value: "gemini-1.5-flash",
     label: "Gemini 1.5 Flash · clásico rápido",
@@ -29,7 +27,7 @@ export const GEMINI_MODEL_OPTIONS: GeminiModelOption[] = [
 ];
 
 export const GEMINI_RETIRED_NOTE =
-  "Google retiró los modelos 1.5 en septiembre de 2025. Si tu clave responde 404, elige un modelo 2.5.";
+  "Google retiró los modelos 1.5 en septiembre de 2025. Si tu clave responde 404, elige un modelo actual.";
 
 /** Nombre corto para la cabecera del chat (sin la descripción). */
 export function shortGeminiModelLabel(value: string): string {

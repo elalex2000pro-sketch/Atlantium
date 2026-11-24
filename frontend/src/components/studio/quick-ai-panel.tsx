@@ -12,6 +12,7 @@ import { ApiError, api } from "@/lib/api";
 import { getOpenBook, subscribeOpenBook } from "@/lib/book-context";
 import { COOKIE_DOCUMENT_EXTENSION, type CookieCard } from "@/lib/ai-drawer";
 import { errorMessage, tempId } from "@/lib/studio";
+import { GEMINI_MODEL_UNAVAILABLE } from "@/lib/ai-models";
 import type {
   AssistantMessage, AssistantStatus, ChatAttachment, DocumentFile, PanelContextItem, PanelPreview, PanelPreviewRequest,
 } from "@/lib/types";
@@ -289,7 +290,12 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion
           <p role="status" className="text-sm">No se pudo consultar el proveedor. Vuelve a abrir el panel.</p>
         ) : null}
         {notice && !(settingsNeeded && notice === "Falta tu clave de IA en Ajustes") && (
-          <p role="alert" className="text-sm text-destructive">{notice}</p>
+          <p role="alert" className="text-sm text-destructive">
+            {notice}
+            {notice === GEMINI_MODEL_UNAVAILABLE && (
+              <> <Link className="underline" href="/settings?tab=integrations" onClick={onClose}>Elegir otro modelo en Ajustes</Link></>
+            )}
+          </p>
         )}
         <fieldset disabled={busy} className="space-y-2 rounded-xl border border-border/50 bg-background/30 px-3 pb-3">
           <legend className="px-1 text-sm font-medium">Contexto del envío</legend>

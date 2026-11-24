@@ -1,5 +1,6 @@
 """Mensajes seguros del proveedor: nunca incluyen URL, clave ni respuesta remota."""
 import logging
+import re
 
 import httpx
 from fastapi import HTTPException
@@ -27,9 +28,31 @@ class AiProviderError(RuntimeError):
     pass
 
 
-def provider_error_message(error: Exception) -> str:
+def _gemini_model_unavailable(response: httpx.Response) -> bool:
+    if response.status_code == 404:
+        return True
+    if response.status_code not in (400, 403):
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    detail = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(detail, dict):
+        return False
+    message = detail.get("message", "")
+    return detail.get("status") == "NOT_FOUND" or (
+        isinstance(message, str) and bool(re.search(
+            r"\bmodels?\b[^\n]*(?:not found|no longer available|not available|does not exist)", message, re.I,
+        ))
+    )
+
+
+def provider_error_message(error: Exception, provider: str | None = None) -> str:
     if isinstance(error, httpx.HTTPStatusError):
         code = error.response.status_code
+        if provider == "gemini" and _gemini_model_unavailable(error.response):
+            return "Este modelo ya no está disponible. Elige otro en Ajustes"
         if code in (401, 403):
             return "No se pudo usar tu clave de IA. Revisa la clave y sus permisos en Ajustes."
         if code in (400, 404):

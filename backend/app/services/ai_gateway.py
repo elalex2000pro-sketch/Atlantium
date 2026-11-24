@@ -63,8 +63,9 @@ def resolve_profile(user: User, encrypted_key: str | None = None) -> AiProfile:
             vision = settings.ai_gemini_vision_model if provider == "gemini" else model
         else:
             raise AiRequestRejected(status_code=400, detail="Selecciona un proveedor de IA en Ajustes.")
-        if user.ai_model:
-            model = vision = user.ai_model.strip() or model
+        saved_model = (user.ai_model or "").strip()
+        if saved_model and not (provider == "gemini" and saved_model.lower().removeprefix("models/").startswith("gemini-2.5-")):
+            model = vision = saved_model
         api_key = crypto.decrypt(encrypted_key) or ""
     return AiProfile(
         provider, base_url.strip().rstrip("/"), model, vision, api_key,

@@ -89,8 +89,8 @@ class Settings(BaseSettings):
     ai_gemini_base_url: str = (
         "https://generativelanguage.googleapis.com/v1beta/openai/"
     )
-    ai_gemini_model: str = "gemini-2.5-flash"
-    ai_gemini_vision_model: str = "gemini-2.5-flash"
+    ai_gemini_model: str = "gemini-3.8-flash"
+    ai_gemini_vision_model: str = "gemini-3.8-flash"
     # ChatGPT (OpenAI): clave en platform.openai.com -> API keys.
     ai_openai_base_url: str = "https://api.openai.com/v1"
     ai_openai_model: str = "gpt-4o-mini"

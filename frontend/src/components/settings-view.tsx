@@ -1254,7 +1254,7 @@ export function SettingsView() {
                     {aiModelCustom && (
                       <Input
                         aria-label="ID del modelo"
-                        placeholder="p. ej. gemini-2.5-flash"
+                        placeholder="p. ej. gemini-3.8-flash"
                         value={aiModel}
                         onChange={(event) => setAiModel(event.target.value)}
                         className="h-8 text-[12px]"

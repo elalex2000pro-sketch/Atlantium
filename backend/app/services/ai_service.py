@@ -354,7 +354,7 @@ async def generate_reply(
         except Exception as exc:  # noqa: BLE001 - degradacion controlada
             log_provider_error(logger, profile.provider, exc)
             if profile.provider == "gemini":
-                return AiResult(reply=provider_error_message(exc), source="error")
+                return AiResult(reply=provider_error_message(exc, profile.provider), source="error")
 
     if document_text:
         return AiResult(
