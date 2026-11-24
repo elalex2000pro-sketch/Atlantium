@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Loader2, LogOut } from "lucide-react";
-import { CookieButton } from "@/components/cookie-button";
+import { CookieButton, CookieOrb } from "@/components/cookie-button";
+import { CookieWelcome } from "@/components/cookie-welcome";
 
 import { useAuth } from "@/components/auth-provider";
 import { ContextPanel } from "@/components/context-panel";
@@ -73,12 +74,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { animationLevel } = usePreferences();
   const { sidebar: sidebarLayout } = useSidebarPreferences();
-  const reduceMotion = animationLevel === "reduced";
+  const systemReducedMotion = useReducedMotion();
+  const reduceMotion = animationLevel === "reduced" || Boolean(systemReducedMotion);
   const isPublic = pathname === "/login";
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
   const [cookieCard, setCookieCard] = useState<CookieCard | null>(null);
+  const [cookieOrigin, setCookieOrigin] = useState<{ right: number; bottom: number } | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
+  const cookieAnchor = useRef<HTMLButtonElement>(null);
   const cookieTrigger = useRef<HTMLButtonElement | null>(null);
   const quickAiExpanded = aiMode === "cookie" || aiMode === "quick";
   const closeAi = () => setAiMode(null);
@@ -98,10 +102,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // El drawer de IA se abre desde cualquier pantalla mediante un evento.
   useEffect(() => {
-    const open = () => setAiMode("studio");
+    const open = () => {
+      setCookieOrigin(null);
+      setAiMode("studio");
+    };
     const openQuick = (event: Event) => {
       const detail = (event as CustomEvent<{ card: CookieCard; trigger: HTMLButtonElement }>).detail;
       setCookieCard(detail?.card ?? null);
+      setCookieOrigin(null);
       if (detail) cookieTrigger.current = detail.trigger;
       setAiMode(detail ? "cookie" : "quick");
     };
@@ -154,6 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const name = user.full_name?.trim() || user.email.split("@")[0];
+  const firstName = user.full_name?.trim().split(/\s+/)[0];
   const initials = name.slice(0, 2).toUpperCase();
 
   // Studio y el lector de libros ocupan toda la altura disponible y ya
@@ -324,8 +333,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {!isBookReader ? <MobileNavigationBar /> : null}
         {!showOnboarding && (
           <CookieButton
+            ref={cookieAnchor}
             reduceMotion={reduceMotion}
+            active={!aiMode}
             onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setCookieOrigin({ right: window.innerWidth - rect.right + rect.width / 2, bottom: window.innerHeight - rect.bottom + rect.height / 2 });
               cookieTrigger.current = event.currentTarget;
               setCookieCard(null);
               setAiMode("cookie");
@@ -338,6 +351,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           />
         )}
+        {!showOnboarding && (
+          <CookieWelcome key={user.id} userId={user.id} name={firstName} anchor={cookieAnchor}
+            reduced={reduceMotion} panelOpen={Boolean(aiMode)} />
+        )}
       </div>
 
       <GamificationToast />
@@ -347,7 +364,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {aiMode ? (
           <motion.div
             key="ai-drawer"
-            className="fixed inset-0 z-[95] flex justify-end bg-slate-950/35 backdrop-blur-sm"
+            className={cn(
+              "fixed inset-0 z-[95] flex justify-end bg-slate-950/35 backdrop-blur-sm",
+              quickAiExpanded && "items-end pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+            )}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -360,11 +380,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={quickAiExpanded ? "Panel de IA" : "IA Studio"}
               tabIndex={-1}
-              className="flex h-dvh w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-l border-white/15 bg-literal-f4f4f7/92 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10 dark:bg-literal-0b0f18/94"
-              initial={{ x: 64, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 64, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 34 }}
+              className={cn(
+                "flex w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-white/15 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10",
+                quickAiExpanded
+                  ? "h-full max-h-[48rem] origin-bottom-right rounded-[24px] border bg-background/95"
+                  : "h-dvh border-l bg-literal-f4f4f7/92 dark:bg-literal-0b0f18/94",
+              )}
+              style={quickAiExpanded && cookieOrigin ? {
+                transformOrigin: `calc(100% + max(0.75rem, env(safe-area-inset-right)) - ${cookieOrigin.right}px) calc(100% + max(0.75rem, env(safe-area-inset-bottom)) - ${cookieOrigin.bottom}px)`,
+              } : undefined}
+              initial={reduceMotion ? { opacity: 0 } : quickAiExpanded ? { scale: 0.18, opacity: 0 } : { x: 64, opacity: 0 }}
+              animate={reduceMotion ? { opacity: 1 } : quickAiExpanded ? { scale: [0.18, 1.025, 1], opacity: [0, 1, 1] } : { x: 0, opacity: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : quickAiExpanded
+                ? { scale: 0.18, opacity: 0, transition: { duration: 0.24, ease: "easeIn" } }
+                : { x: 64, opacity: 0 }}
+              transition={reduceMotion ? { duration: 0.12 } : quickAiExpanded
+                ? { duration: 0.5, delay: cookieOrigin ? 0.1 : 0, times: [0, 0.82, 1], ease: "easeOut" }
+                : { type: "spring", stiffness: 320, damping: 34 }}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
                 if (event.key !== "Tab") return;
@@ -390,12 +422,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 {quickAiExpanded ? (
                   <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} card={aiMode === "cookie" ? cookieCard : null}
-                    userName={user.full_name?.trim().split(/\s+/)[0]} reduceMotion={reduceMotion} />
+                    userName={firstName} reduceMotion={reduceMotion} />
                 ) : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>
           </motion.div>
         ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {aiMode === "cookie" && cookieOrigin && !reduceMotion && (
+          <motion.div key="cookie-panel-flight" data-cookie-panel-flight aria-hidden="true"
+            className="pointer-events-none fixed z-[96] flex h-12 w-12 translate-x-1/2 translate-y-1/2 items-center justify-center"
+            style={{ right: cookieOrigin.right, bottom: cookieOrigin.bottom }}>
+            <motion.div
+              initial={{ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 }}
+              animate={{ x: [0, 0, -26, -62], y: [0, 4, -104, -138],
+                scaleX: [1, 1.16, 0.96, 1], scaleY: [1, 0.82, 1.18, 1], opacity: [1, 1, 1, 0] }}
+              transition={{ duration: 0.53, times: [0, 0.16, 0.63, 1], ease: "easeOut" }}
+              exit={{ x: [-52, -22, 0, 0], y: [-105, -75, 0, 0], opacity: [0, 1, 1, 1],
+                scaleX: [1, 0.94, 1.12, 1], scaleY: [1, 1.13, 0.86, 1],
+                transition: { duration: 0.31, times: [0, 0.35, 0.81, 1], ease: "easeInOut" } }}>
+              <CookieOrb expression="happy" reduceMotion={false} idle={false} />
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {showOnboarding ? (

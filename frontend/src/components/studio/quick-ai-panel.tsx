@@ -240,7 +240,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion
   return (
     <>
       <header className="flex shrink-0 items-center gap-3 border-b border-border/50 bg-background/35 px-4 py-3 backdrop-blur-xl">
-        <CookieOrb reduceMotion={reduceMotion} />
+        <CookieOrb reduceMotion={reduceMotion} expression={sending ? "thinking" : notice ? "surprised" : messages.length ? "happy" : "neutral"} />
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Cookie</h2>
           <p className="truncate text-xs text-muted-foreground">

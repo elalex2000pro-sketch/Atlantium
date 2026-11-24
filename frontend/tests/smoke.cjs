@@ -82,9 +82,14 @@ async function main() {
   await require('./interface-style-e2e.cjs').verifyInterfaceStyle(browser, { WEB, request });
   console.log('PASS appearance: onboarding, selector and persistence');
   if (process.argv.includes('--appearance-only')) return;
-  execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
+  const cookieMotionOnly = process.argv.includes('--cookie-motion-only');
+  if (!cookieMotionOnly) {
+    execFileSync(process.execPath, [path.join(__dirname, 'sidebar-e2e.cjs')], { stdio: 'inherit', windowsHide: true, env: { ...process.env, SMOKE_API: API, SMOKE_WEB: WEB, REDESIGN_OUTPUT: path.join(output, 'sidebar') } });
+  }
   const { access_token: token } = await request('/auth/register', null, 'POST', { email: `smoke-${Date.now()}@example.com`, password: 'SmokeRouteTest123', full_name: 'Usuario de humo' });
   const user = await request('/auth/me', token);
+  await require('./cookie-motion-e2e.cjs').verifyCookieMotion(browser, { WEB, token, user, output });
+  if (cookieMotionOnly) return;
   const group = await request('/classes', token, 'POST', { name: 'Clase de humo' });
   const office = await request('/office/documents', token, 'POST', { title: 'Documento de humo', content: '<h1>Documento de humo</h1><p>Contenido persistente.</p>' });
   await request('/notebooks', token, 'POST', { title: 'Cuaderno de humo' });
@@ -112,7 +117,7 @@ async function main() {
   const reports = [];
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport, serviceWorkers: 'block', permissions: ['microphone'], reducedMotion: 'no-preference' });
-    await context.addInitScript(({ token, user }) => { localStorage.setItem('autopilot_token', token); localStorage.setItem('autopilot_user', JSON.stringify(user)); localStorage.setItem('hasCompletedOnboarding_v1', 'true'); }, { token, user });
+    await context.addInitScript(({ token, user }) => { localStorage.setItem('autopilot_token', token); localStorage.setItem('autopilot_user', JSON.stringify(user)); localStorage.setItem('hasCompletedOnboarding_v1', 'true'); sessionStorage.setItem(`atlantium:cookie-welcome:${user.id}`, '1'); }, { token, user });
     const page = await context.newPage(); const errors = []; let current = 'startup';
     function watchErrors(view) {
       view.on('console', message => { if (message.type() === 'error') errors.push(`${current}: console ${message.text()}`); });
@@ -274,11 +279,16 @@ async function main() {
       assert.equal(new URL(page.url()).pathname, '/planner');
       assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
       const taskTitle = `Tarea para Cookie ${viewport.width}`;
-      const taskDue = new Date();
-      taskDue.setHours(23, 59, 0, 0);
-      await request('/tasks', token, 'POST', { title: taskTitle, due_at: taskDue.toISOString() });
+      // La API SQLite del smoke devuelve la fecha sin zona. El mediodía de
+      // mañana evita que el Planificador descarte la tarea por vencida de noche.
+      const taskDue = await page.evaluate(() => {
+        const today = new Date();
+        return new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)).toISOString();
+      });
+      await request('/tasks', token, 'POST', { title: taskTitle, due_at: taskDue });
       await visit('/planner');
       await page.getByRole('button', { name: 'Día', exact: true }).click();
+      await page.getByRole('button', { name: 'Periodo siguiente', exact: true }).click();
       const taskCard = page.getByRole('button', { name: `Editar ${taskTitle}`, exact: true }).locator('..');
       await taskCard.getByRole('button', { name: 'Preguntar a Cookie' }).click();
       await quickPanel.locator('pre').filter({ hasText: taskTitle }).waitFor();

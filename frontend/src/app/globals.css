@@ -429,6 +429,15 @@ body:has([aria-modal="true"]:not([data-cookie-ai-dialog]), dialog[open]) .cookie
   visibility: hidden;
 }
 
+.app-shell:has([data-cookie-welcome="center"]) .cookie-launcher {
+  visibility: hidden;
+}
+
+body:has([data-cookie-panel-flight]) .cookie-launcher {
+  opacity: 0;
+  pointer-events: none;
+}
+
 @media (min-width: 768px) and (max-width: 1023.98px) {
   .app-shell {
     --mobile-header-height: calc(101px + env(safe-area-inset-top, 0px));
