@@ -13,6 +13,8 @@ async function verifyCookieMotion(browser, { WEB, token, user, output }) {
         localStorage.setItem('autopilot_token', token);
         localStorage.setItem('autopilot_user', JSON.stringify(user));
         localStorage.setItem('hasCompletedOnboarding_v1', 'true');
+        const xpKey = `autopilot:gamification:${user.id}`;
+        if (!localStorage.getItem(xpKey)) localStorage.setItem(xpKey, JSON.stringify({ xp: 90 }));
       }, { token, user });
       const page = await context.newPage();
       await page.addInitScript(() => {
@@ -88,10 +90,49 @@ async function verifyCookieMotion(browser, { WEB, token, user, output }) {
       assert.ok(viewport.height - panel.y - panel.height >= 10);
       assert.equal(await dialog.evaluate(el => parseFloat(getComputedStyle(el).borderTopLeftRadius)), 24);
       await page.screenshot({ path: path.join(output, `cookie-r5e-panel-${capture}.png`) });
+
+      await dialog.getByText('Nivel 1 de Cookie', { exact: true }).waitFor();
+      const progress = dialog.getByRole('progressbar', { name: 'Progreso de XP de Cookie' });
+      assert.equal(await progress.getAttribute('value'), '90');
+      await dialog.getByText('Recompensas', { exact: true }).click();
+      const glasses = dialog.getByRole('list', { name: 'Recompensas de Cookie' })
+        .getByRole('listitem').filter({ hasText: 'Gafas' });
+      await glasses.getByText('Nivel 2', { exact: true }).waitFor();
+
+      const levelUp = () => page.evaluate(userId => {
+        localStorage.setItem(`autopilot:gamification:${userId}`, JSON.stringify({ xp: 105 }));
+        window.dispatchEvent(new CustomEvent('autopilot:xp', {
+          detail: { userId, previousLevel: 1, level: 2, xp: 105, amount: 15, leveledUp: true, unlocked: [] },
+        }));
+      }, user.id);
+      await levelUp();
+      await dialog.getByText('Nivel 2 de Cookie', { exact: true }).waitFor();
+      assert.equal(await progress.getAttribute('value'), '5');
+      await glasses.getByText('Desbloqueado', { exact: true }).waitFor();
+      const notice = page.getByText('¡Subiste al nivel 2!', { exact: true });
+      await notice.waitFor();
+      await page.getByText('Cookie desbloqueó: Gafas', { exact: true }).waitFor();
+      if (!reduced) await dialog.locator('header [data-cookie-expression="happy"]').waitFor();
+      else assert.equal(await dialog.locator('header [data-cookie-orb]').getAttribute('data-cookie-expression'), 'neutral');
+
+      const noticeNode = await notice.elementHandle();
+      await levelUp();
+      assert.equal(await noticeNode.evaluate(el => el.isConnected), true);
+      assert.equal(await notice.count(), 1);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'detached' });
       await page.locator('[data-cookie-panel-flight]').waitFor({ state: 'detached' });
       assert.equal(await launcher.evaluate(el => el === document.activeElement), true);
+      if (width === 1440) {
+        await page.reload();
+        await page.locator('html[data-cookie-startup-ready]').waitFor({ state: 'attached' });
+        await launcher.click();
+        await dialog.getByText('Nivel 2 de Cookie', { exact: true }).waitFor();
+        await dialog.getByText('Recompensas', { exact: true }).click();
+        await glasses.getByText('Desbloqueado', { exact: true }).waitFor();
+        assert.equal(await notice.count(), 0);
+      }
+      console.log(`PASS Cookie R5b ${capture}: progreso, recompensas y aviso de nivel`);
       console.log(`PASS Cookie R5e ${capture}: bienvenida, posición, panel flotante y teclado`);
     } finally {
       await context.close();

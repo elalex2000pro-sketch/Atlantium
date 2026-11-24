@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { BookOpen, CalendarDays, FileText, Lightbulb, ListChecks, Send, X } from "lucide-react";
 
 import { CookieOrb } from "@/components/cookie-button";
+import { CookieProgress } from "@/components/cookie-progress";
 import { MessageBubble, TypingBubble } from "@/components/studio/message-bubble";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
@@ -73,12 +74,14 @@ function PreviewSection({ entries }: { entries: NonNullable<PanelPreview["sectio
   ));
 }
 
-export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion }: {
+export function QuickAiPanel({ onClose, fromCookie, card, userName, userId, reduceMotion, celebrating }: {
   onClose: () => void;
   fromCookie: boolean;
   card: CookieCard | null;
   userName?: string;
+  userId: string;
   reduceMotion: boolean;
+  celebrating: boolean;
 }) {
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -241,7 +244,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion
   return (
     <>
       <header className="flex shrink-0 items-center gap-3 border-b border-border/50 bg-background/35 px-4 py-3 backdrop-blur-xl">
-        <CookieOrb reduceMotion={reduceMotion} expression={sending ? "thinking" : notice ? "surprised" : messages.length ? "happy" : "neutral"} />
+        <CookieOrb reduceMotion={reduceMotion} expression={celebrating && !reduceMotion ? "happy" : sending ? "thinking" : notice ? "surprised" : messages.length ? "happy" : "neutral"} />
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Cookie</h2>
           <p className="truncate text-xs text-muted-foreground">
@@ -254,6 +257,7 @@ export function QuickAiPanel({ onClose, fromCookie, card, userName, reduceMotion
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </header>
+      <CookieProgress userId={userId} />
       <div ref={scroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {!messages.length && (
           <div className="space-y-4">

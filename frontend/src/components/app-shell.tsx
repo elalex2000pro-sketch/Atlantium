@@ -80,6 +80,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
   const [cookieCard, setCookieCard] = useState<CookieCard | null>(null);
+  const [cookieCelebrating, setCookieCelebrating] = useState(false);
   const [cookieOrigin, setCookieOrigin] = useState<{ right: number; bottom: number } | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
   const cookieAnchor = useRef<HTMLButtonElement>(null);
@@ -335,6 +336,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <CookieButton
             ref={cookieAnchor}
             reduceMotion={reduceMotion}
+            celebrating={cookieCelebrating}
             active={!aiMode}
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
@@ -357,7 +359,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      <GamificationToast />
+      <GamificationToast key={user.id} userId={user.id} reduceMotion={reduceMotion} panelOpen={Boolean(aiMode)} onCelebrate={setCookieCelebrating} />
       <GamificationThemeSync />
 
       <AnimatePresence>
@@ -401,7 +403,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onKeyDown={(event) => {
                 if (event.key !== "Tab") return;
                 const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-                  'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+                  'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
                 )).filter((item) => item.getClientRects().length > 0);
                 const first = items[0];
                 const last = items.at(-1);
@@ -422,7 +424,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 {quickAiExpanded ? (
                   <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} card={aiMode === "cookie" ? cookieCard : null}
-                    userName={firstName} reduceMotion={reduceMotion} />
+                    userName={firstName} userId={user.id} reduceMotion={reduceMotion} celebrating={cookieCelebrating} />
                 ) : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>

@@ -53,6 +53,7 @@ function pdfFixture() {
 async function main() {
   execFileSync(process.execPath, ['--test', path.join(__dirname, 'task-delivery.test.cjs')], { stdio: 'inherit' });
   execFileSync(process.execPath, ['--test', path.join(__dirname, 'task-snooze.test.cjs')], { stdio: 'inherit' });
+  execFileSync(process.execPath, ['--test', path.join(__dirname, 'cookie-levels.test.cjs')], { stdio: 'inherit' });
   const output = process.env.SMOKE_OUTPUT || await fs.mkdtemp(path.join(os.tmpdir(), 'academic-smoke-'));
   await fs.mkdir(output, { recursive: true });
   console.log('Smoke artifacts: ' + output);

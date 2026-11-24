@@ -11,6 +11,37 @@ export const LEVEL_UP_EVENT = "autopilot:level-up";
 export const COSMETICS_EVENT = "autopilot:cosmetics";
 export const TASK_XP = 15;
 export const FOCUS_XP = 25;
+export const MAX_LEVEL = 99;
+
+export const COOKIE_REWARDS = [
+  { id: "glasses", name: "Gafas", level: 2, icon: "🕶️" },
+  { id: "headphones", name: "Auriculares", level: 4, icon: "🎧" },
+  { id: "graduation-cap", name: "Gorro de graduación", level: 6, icon: "🎓" },
+  { id: "scarf", name: "Bufanda", level: 8, icon: "🧣" },
+  { id: "crown", name: "Corona", level: 10, icon: "👑" },
+] as const;
+
+export function getCookieRewards(level: number) {
+  return COOKIE_REWARDS.map((reward) => ({ ...reward, unlocked: level >= reward.level }));
+}
+
+const cookieNotifiedLevels = new Map<string, number>();
+
+/** Solo un aumento de XP puede anunciar un nivel, incluso después de recargar. */
+export function claimCookieLevelNotice(userId: string, previousLevel: number, level: number) {
+  if (!userId || level <= previousLevel || typeof window === "undefined") return null;
+  const key = `autopilot:cookie-notified-level:${userId}`;
+  let seen = cookieNotifiedLevels.get(userId) ?? 0;
+  try {
+    seen = Math.max(seen, Number(window.localStorage.getItem(key)) || 0);
+  } catch { /* La memoria de esta pestaña sigue disponible. */ }
+  if (level <= seen) return null;
+  cookieNotifiedLevels.set(userId, level);
+  try {
+    window.localStorage.setItem(key, String(level));
+  } catch { /* La memoria de esta pestaña sigue disponible. */ }
+  return COOKIE_REWARDS.filter((reward) => reward.level > Math.max(previousLevel, seen) && reward.level <= level);
+}
 
 const TITLES = [
   "Aprendiz",
@@ -141,7 +172,7 @@ export function xpForLevel(level: number): number {
 export function getLevelInfo(xp: number): LevelInfo {
   const safeXp = Math.max(0, Math.floor(xp));
   let level = 1;
-  while (level < 99 && safeXp >= xpForLevel(level + 1)) level += 1;
+  while (level < MAX_LEVEL && safeXp >= xpForLevel(level + 1)) level += 1;
 
   const currentLevelXp = xpForLevel(level);
   const nextLevelXp = xpForLevel(level + 1);
@@ -299,6 +330,8 @@ export function awardXp(
     window.dispatchEvent(
       new CustomEvent(XP_EVENT, {
         detail: {
+          userId,
+          previousLevel: before.level,
           xp: after.xp,
           amount: Math.round(amount),
           reason,

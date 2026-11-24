@@ -91,8 +91,8 @@ export function CookieOrb({
   );
 }
 
-export const CookieButton = forwardRef<HTMLButtonElement, CookieButtonProps & { active?: boolean }>(function CookieButton({
-  onClick, reduceMotion, className, decoration, active = true,
+export const CookieButton = forwardRef<HTMLButtonElement, CookieButtonProps & { active?: boolean; celebrating?: boolean }>(function CookieButton({
+  onClick, reduceMotion, className, decoration, active = true, celebrating = false,
 }, ref) {
   const [expression, setExpression] = useState<CookieExpression>("neutral");
   useEffect(() => {
@@ -122,7 +122,7 @@ export const CookieButton = forwardRef<HTMLButtonElement, CookieButtonProps & { 
         className,
       )}
     >
-      <CookieOrb reduceMotion={reduceMotion} decoration={decoration} expression={expression} idle={active} size="floating" />
+      <CookieOrb reduceMotion={reduceMotion} decoration={decoration} expression={celebrating && !reduceMotion ? "happy" : expression} idle={active} size="floating" />
     </button>
   );
 });
