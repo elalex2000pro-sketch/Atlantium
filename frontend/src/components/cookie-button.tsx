@@ -43,7 +43,7 @@ export function CookieButton({
       <motion.span
         aria-hidden="true"
         data-cookie-orb
-        initial={false}
+        initial={{ scale: 1 }}
         animate={{ scale: still ? 1 : [1, 1.075, 1] }}
         transition={still ? { duration: 0 } : { duration: 3.6, ease: "easeInOut", repeat: Infinity }}
         className="pointer-events-none relative h-6 w-6 shrink-0 rounded-full border border-white/50 bg-blue-600/80 shadow-[inset_0_-3px_6px_#123e9d,0_2px_7px_#2678ed55] backdrop-blur-sm"

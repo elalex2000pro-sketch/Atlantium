@@ -103,7 +103,7 @@ async function main() {
   }
   const reports = [];
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
-    const context = await browser.newContext({ viewport, serviceWorkers: 'block', permissions: ['microphone'] });
+    const context = await browser.newContext({ viewport, serviceWorkers: 'block', permissions: ['microphone'], reducedMotion: 'no-preference' });
     await context.addInitScript(({ token, user }) => { localStorage.setItem('autopilot_token', token); localStorage.setItem('autopilot_user', JSON.stringify(user)); localStorage.setItem('hasCompletedOnboarding_v1', 'true'); }, { token, user });
     const page = await context.newPage(); const errors = []; let current = 'startup';
     function watchErrors(view) {
