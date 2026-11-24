@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LayoutGroup, useReducedMotion } from "framer-motion";
 import { PanelLeftClose, PanelLeftOpen, LogOut } from "lucide-react";
-import { CookieButton } from "@/components/cookie-button";
 import { Logo } from "@/components/logo";
 import { WindowControls } from "@/components/window-controls";
 import { ThemeCycleButton } from "@/components/theme-toggle";
@@ -14,7 +13,7 @@ import { NAV_GROUPS, SETTINGS_ITEM, isActive } from "@/lib/navigation";
 import { SidebarLink } from "./sidebar-link";
 import { cn } from "@/lib/utils";
 
-export function Sidebar({ reduceMotion, logout, name, email, onToggleAi, aiExpanded }: { reduceMotion: boolean; logout: () => void; name: string; email: string; onToggleAi: () => void; aiExpanded: boolean }) {
+export function Sidebar({ reduceMotion, logout, name, email }: { reduceMotion: boolean; logout: () => void; name: string; email: string }) {
   const pathname = usePathname();
   const { sidebar, updateSidebar } = useSidebarPreferences();
   const systemReduced = useReducedMotion();
@@ -51,13 +50,6 @@ export function Sidebar({ reduceMotion, logout, name, email, onToggleAi, aiExpan
           ))}
         </nav>
         <div className="shrink-0 border-t border-border px-2 py-2">
-          <CookieButton
-            onClick={onToggleAi}
-            expanded={aiExpanded}
-            reduceMotion={reduced}
-            showLabel={!sidebar.collapsed}
-            className={cn("h-11 w-full gap-3 rounded-2xl", !sidebar.collapsed && "justify-start px-3")}
-          />
           <div className={cn("flex items-center gap-3 px-1", sidebar.collapsed && "justify-center")}>
             <ThemeCycleButton className="h-11 w-11 shrink-0 text-foreground hover:bg-accent" />
             {!sidebar.collapsed && <span className="text-xs text-muted-foreground">Tema de la app</span>}

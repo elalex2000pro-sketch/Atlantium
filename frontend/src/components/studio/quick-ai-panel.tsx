@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Send, Wand2, X } from "lucide-react";
-import { CookieButton } from "@/components/cookie-button";
 
 import { MessageBubble, TypingBubble } from "@/components/studio/message-bubble";
 import { Button } from "@/components/ui/button";
@@ -78,6 +77,7 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
   const [review, setReview] = useState<{ payload: PanelPreviewRequest; preview: PanelPreview } | null>(null);
   const openBook = useSyncExternalStore(subscribeOpenBook, getOpenBook, () => null);
   const scroll = useRef<HTMLDivElement>(null);
+  const messageField = useRef<HTMLTextAreaElement>(null);
   const missingKey = status && status.provider !== "local" && !status.has_api_key;
   const settingsNeeded = status && !status.configured;
   const busy = sending || reviewing;
@@ -94,6 +94,10 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
   useEffect(() => {
     if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
   }, [messages, sending]);
+
+  useEffect(() => {
+    if (fromCookie) messageField.current?.focus({ preventScroll: true });
+  }, [fromCookie]);
 
   function toggle(item: PanelContextItem, checked: boolean) {
     setReview(null);
@@ -182,13 +186,9 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
   return (
     <>
       <header className="flex shrink-0 items-center gap-3 border-b border-border/50 px-4 py-3">
-        {fromCookie ? (
-          <CookieButton onClick={onClose} expanded reduceMotion closeControl className="h-9 w-9" />
-        ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-            <Wand2 className="h-4 w-4" aria-hidden="true" />
-          </span>
-        )}
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+          <Wand2 className="h-4 w-4" aria-hidden="true" />
+        </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Panel de IA</h2>
           <p className="truncate text-xs text-muted-foreground">
@@ -283,6 +283,7 @@ export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fro
         )}
         <div className="flex items-end gap-2">
           <textarea
+            ref={messageField}
             aria-label="Mensaje para la IA"
             rows={2}
             maxLength={4000}

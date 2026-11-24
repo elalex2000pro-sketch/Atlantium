@@ -78,8 +78,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
+  const cookieTrigger = useRef<HTMLButtonElement | null>(null);
   const quickAiExpanded = aiMode === "cookie" || aiMode === "quick";
-  const toggleQuickAi = () => setAiMode((mode) => mode === "cookie" || mode === "quick" ? null : "cookie");
   const closeAi = () => setAiMode(null);
 
   // Guard de rutas: sin sesión -> /login.
@@ -109,8 +109,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!aiMode) return;
-    const previousFocus = document.activeElement;
-    aiDialog.current?.focus({ preventScroll: true });
+    const previousFocus = aiMode === "cookie" ? cookieTrigger.current : document.activeElement;
+    if (!aiDialog.current?.contains(document.activeElement)) {
+      aiDialog.current?.focus({ preventScroll: true });
+    }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setAiMode(null);
     };
@@ -165,10 +167,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           "app-shell flex min-h-dvh flex-col bg-transparent md:flex-row",
-          sidebarLayout.side === "right" && "md:flex-row-reverse",
+          sidebarLayout.side === "right"
+            ? cn("md:flex-row-reverse", sidebarLayout.collapsed ? "md:[--shell-right-rail:5.25rem]" : "md:[--shell-right-rail:14.75rem]")
+            : sidebarLayout.collapsed ? "md:[--shell-left-rail:5.25rem]" : "md:[--shell-left-rail:14.75rem]",
         )}
       >
-        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} onToggleAi={toggleQuickAi} aiExpanded={quickAiExpanded} />
+        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} />
 
         <div className="flex min-w-0 flex-1 flex-col bg-transparent">
           {/* Cabecera móvil: el rail de escritorio empieza en `md`. */}
@@ -200,12 +204,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </Link>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <CookieButton
-                    onClick={toggleQuickAi}
-                    expanded={quickAiExpanded}
-                    reduceMotion={reduceMotion}
-                    className="h-10 w-10"
-                  />
                   <Suspense fallback={<span className="block h-9 w-9" />}>
                     <InstallAppButton compact />
                   </Suspense>
@@ -295,7 +293,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               // dentro de `main` en vez de mover la página.
               "overflow-x-clip",
               !isImmersive &&
-                "pb-[calc(var(--mobile-nav-offset)+1.25rem)] pt-4 md:pb-0 md:pt-5",
+                "pb-[calc(var(--mobile-nav-offset)+4.5rem)] pt-4 md:pb-20 md:pt-5",
             )}
           >
             <div
@@ -318,6 +316,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {!isDashboard && !isImmersive && !isPlanner ? <ContextPanel /> : null}
 
         {!isBookReader ? <MobileNavigationBar /> : null}
+        {!showOnboarding && (
+          <CookieButton
+            reduceMotion={reduceMotion}
+            onClick={(event) => {
+              cookieTrigger.current = event.currentTarget;
+              setAiMode("cookie");
+            }}
+            className={cn(
+              "cookie-launcher fixed right-[calc(var(--shell-right-rail,0px)+1rem+env(safe-area-inset-right,0px))] z-[35] h-12 w-12",
+              isBookReader ? "bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]" : "bottom-[calc(var(--mobile-nav-offset)+0.5rem)]",
+              "md:bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]",
+              aiMode && "invisible",
+            )}
+          />
+        )}
       </div>
 
       <GamificationToast />
@@ -335,6 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <motion.aside
               ref={aiDialog}
+              data-cookie-ai-dialog
               role="dialog"
               aria-modal="true"
               aria-label={quickAiExpanded ? "Panel de IA" : "IA Studio"}
