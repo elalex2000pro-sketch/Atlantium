@@ -1,7 +1,8 @@
 {
   "version": "1.6.0",
-  "publishedAt": null,
-  "sizeBytes": null,
+  "publishedAt": "2026-11-24T01:14:00Z",
+  "generatedAt": "2026-11-24T01:01:24.65Z",
+  "sizeBytes": 112773764,
   "notes": [
     "Puedes abrir el panel de IA sin salir de la pantalla en la que estás.",
     "Antes de enviar, eliges qué contexto compartir y puedes revisar el texto; se muestra el proveedor y el tamaño aproximado.",
@@ -12,5 +13,5 @@
     "El instalador de Windows no está firmado y puede mostrar un aviso de seguridad; el instalador para Mac todavía no se ha probado."
   ],
   "releaseUrl": "https://github.com/elalex2000pro-sketch/academic-autopilot2.0/releases/tag/v1.6.0",
-  "enabled": false
+  "enabled": true
 }
