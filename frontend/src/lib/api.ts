@@ -444,10 +444,15 @@ export const api = {
     }),
   assistantMessages: (limit = 50) =>
     request<AssistantMessage[]>(`/api/v1/assistant/messages?limit=${limit}`),
-  panelChat: (message: string, provider: string) =>
+  previewPanelChat: (payload: import("@/lib/types").PanelPreviewRequest) =>
+    request<import("@/lib/types").PanelPreview>("/api/v1/assistant/panel/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  panelChat: (payload: import("@/lib/types").PanelPreviewRequest, approval: string) =>
     request<ChatResponse>("/api/v1/assistant/panel/chat", {
       method: "POST",
-      body: JSON.stringify({ message, provider }),
+      body: JSON.stringify({ ...payload, approval }),
     }),
   chat: (
     message: string,

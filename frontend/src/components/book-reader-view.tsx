@@ -40,7 +40,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import type { ReaderHighlightRect } from "@/lib/reader-highlights";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
-import { openAiDrawer } from "@/lib/ai-drawer";
+import { openAiDrawer, openQuickAiDrawer } from "@/lib/ai-drawer";
 import { clearOpenBook, publishOpenBook } from "@/lib/book-context";
 import {
   getBook,
@@ -1659,6 +1659,16 @@ export default function BookReaderView() {
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/10 hover:text-white"
             >
               <Sparkles className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={openQuickAiDrawer}
+              aria-label="Abrir panel de IA"
+              aria-haspopup="dialog"
+              className="h-8 shrink-0 rounded-lg px-2 text-xs text-white/70 hover:bg-white/10 md:hidden"
+            >
+              Panel de IA
             </button>
 
             <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/[0.04] p-0.5">

@@ -39,11 +39,46 @@ class ChatRequest(BaseModel):
     page_context_label: str | None = Field(default=None, max_length=300)
 
 
-class PanelChatRequest(BaseModel):
+PanelContextItem = Literal["history", "tasks", "schedule", "grades", "document", "attachments"]
+
+
+class PanelHistoryMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=48_000)
+
+
+class PanelContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selected: list[PanelContextItem] = Field(default_factory=list, max_length=6)
+    history: list[PanelHistoryMessage] = Field(default_factory=list, max_length=120)
+    document_id: uuid.UUID | None = None
+    page_text: str | None = Field(default=None, max_length=48_000)
+    page_label: str | None = Field(default=None, max_length=300)
+    attachments: list[ChatAttachment] = Field(default_factory=list, max_length=6)
+
+
+class PanelPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=4000)
     provider: AiProvider
+    context: PanelContext = Field(default_factory=PanelContext)
+
+
+class PanelChatRequest(PanelPreviewRequest):
+    approval: str = Field(max_length=100)
+
+
+class PanelPreview(BaseModel):
+    provider: AiProvider
+    model: str
+    sections: dict[str, list[dict]]
+    characters: int
+    image_bytes: int
+    approval: str
 
 
 class PendingAction(BaseModel):

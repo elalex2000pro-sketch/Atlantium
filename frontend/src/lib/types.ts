@@ -140,6 +140,33 @@ export interface AssistantStatus {
   custom_base_url?: string;
 }
 
+export type PanelContextItem = "history" | "tasks" | "schedule" | "grades" | "document" | "attachments";
+
+export interface PanelPreviewRequest {
+  message: string;
+  provider: string;
+  context: {
+    selected: PanelContextItem[];
+    history?: { role: "user" | "assistant"; content: string }[];
+    document_id?: string;
+    page_text?: string;
+    page_label?: string;
+    attachments?: ChatAttachment[];
+  };
+}
+
+export interface PanelPreview {
+  provider: string;
+  model: string;
+  sections: Partial<Record<PanelContextItem | "message", {
+    role: "user" | "assistant";
+    content: string | { type: "image_url"; image_url: { url: string } }[];
+  }[]>>;
+  characters: number;
+  image_bytes: number;
+  approval: string;
+}
+
 export interface PendingAction {
   tool: string;
   args: Record<string, unknown>;

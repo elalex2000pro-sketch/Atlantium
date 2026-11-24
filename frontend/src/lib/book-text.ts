@@ -34,6 +34,26 @@ export interface ExtractBookOptions {
 
 const cache = new Map<string, BookTextResult>();
 
+/** Lee solo la página elegida, sin aplicar los recortes de IA Studio. */
+export async function extractBookPage(book: OpenBookContext): Promise<{ text: string; label: string }> {
+  const blob = await getBookFile(book.bookId);
+  if (!blob) throw new Error("El PDF no está disponible en este dispositivo.");
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  try {
+    const number = clampPage(book.page, pdf.numPages);
+    const page = await pdf.getPage(number);
+    const content = await page.getTextContent();
+    const text = layoutText(content.items.filter((item) => "str" in item));
+    if (!text) throw new Error("Esta página no tiene texto legible. Puedes adjuntar una imagen.");
+    if (text.length > 48_000) throw new Error("La página supera los 48.000 caracteres. Quita el PDF o elige otra página.");
+    return { text, label: `${book.title} · pág. ${number}`.slice(0, 300) };
+  } finally {
+    await pdf.destroy();
+  }
+}
+
 function abortError(): Error {
   const error = new Error("Lectura del PDF cancelada.");
   error.name = "AbortError";
