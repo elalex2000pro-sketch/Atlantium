@@ -81,7 +81,7 @@ export function CookieOrb({
       initial={{ scale: 1, y: 0 }}
       animate={still || !idle ? { scale: 1, y: 0 } : { scale: [1, 1.055, 1], y: [0, -2.5, 0] }}
       transition={still || !idle ? { duration: 0 } : { duration: 3.8, ease: "easeInOut", repeat: Infinity }}
-      className="pointer-events-none relative block h-9 w-9 shrink-0 rounded-full border border-sky-200/65 shadow-[inset_0_-3px_6px_#92e6ff70,0_3px_12px_#2478ed70]"
+      className="pointer-events-none relative block h-11 w-11 shrink-0 rounded-full border border-sky-200/65 shadow-[inset_0_-3px_6px_#92e6ff70,0_3px_12px_#2478ed70]"
       style={{ background: "radial-gradient(ellipse at 29% 21%, #d7f0ff 0%, #91b4ff80 11%, transparent 32%), radial-gradient(ellipse at 51% 5%, #243ba5 8%, #3d52e5 49%, #3280ef 71%, #72daff 100%)" }}
     >
       <CookieFace expression={expression} blink={blinking && !still} />
