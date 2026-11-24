@@ -39,9 +39,11 @@ from app.schemas.assistant import (
     ConfirmRequest,
     MessageAttachment,
     PanelChatRequest,
+    PanelPreview,
+    PanelPreviewRequest,
     PendingAction,
 )
-from app.services import ai_gateway, ai_service, ai_studio_service, ai_tools
+from app.services import ai_gateway, ai_panel_context, ai_service, ai_studio_service, ai_tools
 from app.services.ai_errors import AiRequestRejected, log_provider_error, provider_error_message
 from app.services.realtime import notify
 
@@ -155,24 +157,33 @@ async def list_messages(
     return list(reversed(list(result.scalars().all())))
 
 
-@router.post("/panel/chat", response_model=ChatResponse)
-async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: DbSession) -> ChatResponse:
-    message = payload.message.strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="Escribe un mensaje.")
+async def _prepare_panel(payload: PanelPreviewRequest, current_user: CurrentUser, db: DbSession):
     profile = await ai_gateway.load_profile(db, current_user)
     if payload.provider != profile.provider:
         raise HTTPException(status_code=409, detail="Ha cambiado tu proveedor de IA. Revísalo antes de enviar.")
     ai_gateway.require_personal_key(profile)
     if not profile.configured:
         raise HTTPException(status_code=400, detail="Configura tu motor de IA en Ajustes.")
+    images = _prepare_attachments(payload.context.attachments) if "attachments" in payload.context.selected else []
+    return profile, await ai_panel_context.build_preview(db, current_user, profile, payload, images)
 
-    # Este panel no consulta historial, adjuntos ni datos académicos.
-    # Las herramientas tampoco se exponen: sus resultados podrían incluir esos datos.
+
+@router.post("/panel/preview", response_model=PanelPreview)
+async def panel_preview(payload: PanelPreviewRequest, current_user: CurrentUser, db: DbSession) -> PanelPreview:
+    _, preview = await _prepare_panel(payload, current_user, db)
+    return preview
+
+
+@router.post("/panel/chat", response_model=ChatResponse)
+async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: DbSession) -> ChatResponse:
+    profile, preview = await _prepare_panel(payload, current_user, db)
+    ai_panel_context.require_approval(payload.approval, current_user, profile, preview.sections)
+    messages = [entry for section in preview.sections.values() for entry in section]
+    has_images = bool(preview.sections.get("attachments"))
     try:
         result = await ai_gateway.request_ai(
-            db, current_user, "asistente", "texto",
-            ai_gateway.ChatRequest([{"role": "user", "content": message}]),
+            db, current_user, "asistente", "imagen" if has_images else "texto",
+            ai_gateway.ChatRequest(messages, use_vision_model=has_images),
             profile=profile,
         )
     except AiRequestRejected:

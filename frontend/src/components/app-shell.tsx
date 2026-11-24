@@ -22,7 +22,7 @@ import { OverdueTaskPrompt } from "@/components/overdue-task-prompt";
 import { ThemeCycleButton } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/navigation/sidebar";
 import { Button } from "@/components/ui/button";
-import { AI_DRAWER_EVENT } from "@/lib/ai-drawer";
+import { AI_DRAWER_EVENT, QUICK_AI_DRAWER_EVENT } from "@/lib/ai-drawer";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 import {
   SECONDARY_NAV_ITEMS,
@@ -96,8 +96,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // El drawer de IA se abre desde cualquier pantalla mediante un evento.
   useEffect(() => {
     const open = () => setAiMode("studio");
+    const openQuick = () => setAiMode("quick");
     window.addEventListener(AI_DRAWER_EVENT, open);
-    return () => window.removeEventListener(AI_DRAWER_EVENT, open);
+    window.addEventListener(QUICK_AI_DRAWER_EVENT, openQuick);
+    return () => {
+      window.removeEventListener(AI_DRAWER_EVENT, open);
+      window.removeEventListener(QUICK_AI_DRAWER_EVENT, openQuick);
+    };
   }, []);
 
   useEffect(() => {
