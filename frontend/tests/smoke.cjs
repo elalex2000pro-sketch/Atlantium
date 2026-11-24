@@ -279,11 +279,16 @@ async function main() {
       assert.equal(new URL(page.url()).pathname, '/planner');
       assert.equal(await page.locator('main').getAttribute('data-ai-smoke'), 'preserved');
       const taskTitle = `Tarea para Cookie ${viewport.width}`;
-      const taskDue = new Date();
-      taskDue.setHours(23, 59, 0, 0);
-      await request('/tasks', token, 'POST', { title: taskTitle, due_at: taskDue.toISOString() });
+      // La API SQLite del smoke devuelve la fecha sin zona. El mediodía de
+      // mañana evita que el Planificador descarte la tarea por vencida de noche.
+      const taskDue = await page.evaluate(() => {
+        const today = new Date();
+        return new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)).toISOString();
+      });
+      await request('/tasks', token, 'POST', { title: taskTitle, due_at: taskDue });
       await visit('/planner');
       await page.getByRole('button', { name: 'Día', exact: true }).click();
+      await page.getByRole('button', { name: 'Periodo siguiente', exact: true }).click();
       const taskCard = page.getByRole('button', { name: `Editar ${taskTitle}`, exact: true }).locator('..');
       await taskCard.getByRole('button', { name: 'Preguntar a Cookie' }).click();
       await quickPanel.locator('pre').filter({ hasText: taskTitle }).waitFor();
