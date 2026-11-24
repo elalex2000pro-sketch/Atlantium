@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, LogOut, Wand2 } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
+import { CookieButton } from "@/components/cookie-button";
 
 import { useAuth } from "@/components/auth-provider";
 import { ContextPanel } from "@/components/context-panel";
@@ -75,9 +76,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const reduceMotion = animationLevel === "reduced";
   const isPublic = pathname === "/login";
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [aiMode, setAiMode] = useState<"quick" | "studio" | null>(null);
+  const [aiMode, setAiMode] = useState<"cookie" | "quick" | "studio" | null>(null);
   const aiDialog = useRef<HTMLElement>(null);
-  const openQuickAi = () => setAiMode("quick");
+  const quickAiExpanded = aiMode === "cookie" || aiMode === "quick";
+  const toggleQuickAi = () => setAiMode((mode) => mode === "cookie" || mode === "quick" ? null : "cookie");
   const closeAi = () => setAiMode(null);
 
   // Guard de rutas: sin sesión -> /login.
@@ -166,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           sidebarLayout.side === "right" && "md:flex-row-reverse",
         )}
       >
-        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} onOpenAi={openQuickAi} />
+        <Sidebar reduceMotion={reduceMotion} logout={logout} name={name} email={user.email} onToggleAi={toggleQuickAi} aiExpanded={quickAiExpanded} />
 
         <div className="flex min-w-0 flex-1 flex-col bg-transparent">
           {/* Cabecera móvil: el rail de escritorio empieza en `md`. */}
@@ -198,17 +200,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </Link>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Abrir panel de IA"
-                    aria-haspopup="dialog"
-                    onClick={openQuickAi}
-                    className="h-10 w-10 rounded-full text-muted-foreground"
-                  >
-                    <Wand2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  <CookieButton
+                    onClick={toggleQuickAi}
+                    expanded={quickAiExpanded}
+                    reduceMotion={reduceMotion}
+                    className="h-10 w-10"
+                  />
                   <Suspense fallback={<span className="block h-9 w-9" />}>
                     <InstallAppButton compact />
                   </Suspense>
@@ -340,7 +337,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ref={aiDialog}
               role="dialog"
               aria-modal="true"
-              aria-label={aiMode === "quick" ? "Panel de IA" : "IA Studio"}
+              aria-label={quickAiExpanded ? "Panel de IA" : "IA Studio"}
               tabIndex={-1}
               className="flex h-dvh w-full min-w-0 max-w-[480px] flex-col overflow-hidden border-l border-white/15 bg-literal-f4f4f7/92 shadow-[shadow:var(--elevation-app-shell-4)] outline-none backdrop-blur-3xl dark:border-white/10 dark:bg-literal-0b0f18/94"
               initial={{ x: 64, opacity: 0 }}
@@ -370,7 +367,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 }
               >
-                {aiMode === "quick" ? <QuickAiPanel onClose={closeAi} /> : <IAStudio embedded onClose={closeAi} />}
+                {quickAiExpanded ? <QuickAiPanel onClose={closeAi} fromCookie={aiMode === "cookie"} /> : <IAStudio embedded onClose={closeAi} />}
               </Suspense>
             </motion.aside>
           </motion.div>

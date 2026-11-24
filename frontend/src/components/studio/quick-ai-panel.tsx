@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Send, Wand2, X } from "lucide-react";
+import { CookieButton } from "@/components/cookie-button";
 
 import { MessageBubble, TypingBubble } from "@/components/studio/message-bubble";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ function PreviewSection({ entries }: { entries: NonNullable<PanelPreview["sectio
   ));
 }
 
-export function QuickAiPanel({ onClose }: { onClose: () => void }) {
+export function QuickAiPanel({ onClose, fromCookie }: { onClose: () => void; fromCookie: boolean }) {
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [draft, setDraft] = useState("");
@@ -181,9 +182,13 @@ export function QuickAiPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <header className="flex shrink-0 items-center gap-3 border-b border-border/50 px-4 py-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-          <Wand2 className="h-4 w-4" aria-hidden="true" />
-        </span>
+        {fromCookie ? (
+          <CookieButton onClick={onClose} expanded reduceMotion closeControl className="h-9 w-9" />
+        ) : (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+            <Wand2 className="h-4 w-4" aria-hidden="true" />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Panel de IA</h2>
           <p className="truncate text-xs text-muted-foreground">
