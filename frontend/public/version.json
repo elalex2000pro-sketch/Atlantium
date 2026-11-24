@@ -1,18 +1,16 @@
 {
-  "version": "1.5.0",
-  "publishedAt": "2026-11-16T22:53:54Z",
-  "generatedAt": "2026-11-16T22:47:18.504Z",
-  "sizeBytes": 112773845,
+  "version": "1.6.0",
+  "publishedAt": null,
+  "sizeBytes": null,
   "notes": [
-    "La app ahora se llama Atlantium, también en el escritorio, conservando tus datos y tu sesión.",
-    "Puedes marcar tareas como entregadas aunque las hayas enviado por otro medio, y consultarlas en Entregas.",
-    "Las tareas vencidas permiten aplazar el recordatorio sin cambiar el plazo del colegio.",
-    "Las notas se organizan por Trimestre y Unidad, con filtros y medias de cada grupo; la media global se conserva.",
-    "El escritorio muestra una opción de reintento cuando no puede conectar, evitando recargas continuas.",
-    "Se mejora la instalación de la web como app y la lectura sin conexión de los PDF ya guardados.",
-    "El instalador de Windows no está firmado y Windows puede mostrar un aviso de seguridad.",
-    "El instalador para Mac todavía no se ha probado."
+    "Puedes abrir el panel de IA sin salir de la pantalla en la que estás.",
+    "Antes de enviar, eliges qué contexto compartir y puedes revisar el texto; se muestra el proveedor y el tamaño aproximado.",
+    "Tus claves de IA se guardan por proveedor; puedes borrar cada una desde Ajustes.",
+    "Se simplifican varias pantallas y la navegación para encontrar mejor las secciones.",
+    "El temporizador de concentración continúa al cambiar de pantalla y la pizarra se puede crear desde su diálogo.",
+    "Para usar un proveedor remoto, configura tu propia clave en Ajustes. Desde el panel, solo se envía el contexto que elijas al proveedor mostrado.",
+    "El instalador de Windows no está firmado y puede mostrar un aviso de seguridad; el instalador para Mac todavía no se ha probado."
   ],
-  "releaseUrl": "https://github.com/elalex2000pro-sketch/academic-autopilot2.0/releases/tag/v1.5.0",
-  "enabled": true
+  "releaseUrl": "https://github.com/elalex2000pro-sketch/academic-autopilot2.0/releases/tag/v1.6.0",
+  "enabled": false
 }
