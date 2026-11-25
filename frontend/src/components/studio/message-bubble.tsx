@@ -43,10 +43,10 @@ function MessageBubbleComponent({ message }: { message: AssistantMessage }) {
         )}
         <div
           className={cn(
-            "min-w-0 max-w-[calc(100%-2.5rem)] rounded-3xl px-4 py-3 text-[13px] leading-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.65)] backdrop-blur-xl sm:max-w-[78%]",
+            "min-w-0 max-w-[calc(100%-2.5rem)] rounded-3xl px-4 py-3 text-[13px] leading-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.65)] sm:max-w-[78%]",
             isUser
-              ? "rounded-br-lg border border-white/25 bg-[#0066FF]/85 text-white shadow-[0_18px_40px_-28px_rgba(0,102,255,0.9)]"
-              : "rounded-bl-lg border border-slate-300/45 bg-slate-100/65 text-slate-800 dark:border-white/10 dark:bg-white/[0.08] dark:text-white/90",
+              ? "rounded-br-lg border border-white/25 bg-[#0066FF] text-primary-foreground shadow-[0_18px_40px_-28px_rgba(0,102,255,0.9)]"
+              : "rounded-bl-lg border border-slate-300/45 bg-slate-100/65 text-slate-800 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.08] dark:text-white/90",
           )}
         >
           {attachments.length > 0 && (
@@ -66,7 +66,7 @@ function MessageBubbleComponent({ message }: { message: AssistantMessage }) {
                     className={cn(
                       "overflow-hidden rounded-2xl border text-left transition-transform hover:-translate-y-0.5",
                       isUser
-                        ? "border-white/25 bg-white/10"
+                        ? "border-white/25 bg-black/10"
                         : "border-slate-300/40 bg-slate-100/60 dark:border-white/10 dark:bg-white/[0.06]",
                     )}
                     aria-label={`Ampliar ${caption}`}
@@ -78,16 +78,11 @@ function MessageBubbleComponent({ message }: { message: AssistantMessage }) {
                         className="h-32 w-full bg-slate-100/80 object-contain dark:bg-white/[0.04]"
                       />
                     ) : (
-                      <span className="flex h-20 items-center justify-center gap-1.5 px-2 text-[10px] opacity-70">
+                      <span className="flex h-20 items-center justify-center gap-1.5 px-2 text-[10px]">
                         <FileText className="h-3.5 w-3.5" /> {caption}
                       </span>
                     )}
-                    <span
-                      className={cn(
-                        "block truncate px-2 py-1 text-[9px]",
-                        isUser ? "text-white/70" : "text-slate-500 dark:text-white/40",
-                      )}
-                    >
+                    <span className="block truncate px-2 py-1 text-[9px]">
                       {caption}
                     </span>
                   </button>
@@ -104,7 +99,7 @@ function MessageBubbleComponent({ message }: { message: AssistantMessage }) {
           <div
             className={cn(
               "mt-1.5 flex items-center gap-1.5 text-[9px]",
-              isUser ? "justify-end text-white/65" : "text-slate-400 dark:text-white/35",
+              isUser && "justify-end",
             )}
           >
             {!isUser && label && <span>{label}</span>}
