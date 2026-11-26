@@ -429,60 +429,12 @@ async def _find_grade(db: AsyncSession, user: User, title: str) -> tuple[Grade |
     return None, partial or exact
 
 
-_DELETE_TARGETS = {
-    "delete_task": (Task, "title", ("tasks",)),
-    "delete_course": (Course, "name", ("courses", "tasks", "grades", "timetable")),
-    "delete_grade": (Grade, "title", ("grades",)),
-    "delete_timetable_entry": (TimetableEntry, "title", ("timetable",)),
-}
-
-
-async def resolve_delete_target(db: AsyncSession, user: User, name: str, args: dict):
-    if name == "delete_task":
-        target, _ = await _find_task(db, user, str(args.get("task_title", "")))
-        return target
-    if name == "delete_course":
-        label = str(args.get("name", "")).strip()
-        target = await _resolve_course(db, user, label, create_if_missing=False)
-        return target if target is not None and label.lower() in target.name.lower() else None
-    if name == "delete_grade":
-        target, _ = await _find_grade(db, user, str(args.get("title", "")))
-        return target
-    if name == "delete_timetable_entry":
-        title = str(args.get("title", "")).strip().lower()
-        if not title:
-            return None
-        entries = list((await db.scalars(select(TimetableEntry).where(TimetableEntry.user_id == user.id))).all())
-        matches = [entry for entry in entries if title in (entry.title or "").lower()]
-        if not matches and title.isdigit():
-            matches = [entry for entry in entries if entry.day_of_week == int(title)]
-        return matches[0] if len(matches) == 1 else None
-    return None
-
-
-async def delete_target(db: AsyncSession, user_id: uuid.UUID, name: str, target_id: uuid.UUID, *, confirm=False):
-    model, label, events = _DELETE_TARGETS[name]
-    query = select(model).where(model.id == target_id, model.user_id == user_id)
-    if model is Task:
-        query = query.where(Task.status != TaskStatus.archived)
-    if confirm:
-        query = query.with_for_update()
-    target = await db.scalar(query)
-    if target is None:
-        return None, []
-    title = getattr(target, label) or "clase"
-    if confirm:
-        await db.delete(target)
-        await db.flush()
-    return title, list(events) if confirm else []
-
-
 # --------------------------------------------------------------------------- #
 # Ejecucion
 # --------------------------------------------------------------------------- #
 async def execute_tool(
     db: AsyncSession, user: User, name: str, args: dict[str, Any],
-    *, notebook=None, citations=None, commit: bool = True,
+    *, notebook=None, citations=None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Ejecuta una herramienta. Devuelve (resultado, eventos de tiempo real)."""
     if notebook is not None:
@@ -493,14 +445,9 @@ async def execute_tool(
     if handler is None:
         return {"ok": False, "error": f"Herramienta desconocida: {name}"}, []
     try:
-        result, events = await handler(db, user, args)
-        if commit and events:
-            await db.commit()
-        return result, events
+        return await handler(db, user, args)
     except Exception as exc:  # noqa: BLE001
         log_provider_error(logger, user.ai_provider or settings.ai_default_provider, exc)
-        if not commit:
-            raise
         await db.rollback()
         return {"ok": False, "error": "No se pudo ejecutar la acción."}, []
 
@@ -527,9 +474,20 @@ async def _h_create_course(db, user, args) -> tuple[dict, list[str]]:
         color=(args.get("color") or None),
     )
     db.add(course)
-    await db.flush()
+    await db.commit()
     await db.refresh(course)
     return {"ok": True, "created": course.name, "id": str(course.id)}, ["courses"]
+
+
+async def _h_delete_course(db, user, args) -> tuple[dict, list[str]]:
+    name = str(args.get("name", "")).strip()
+    course = await _resolve_course(db, user, name, create_if_missing=False)
+    if course is None or name.lower() not in course.name.lower():
+        return {"ok": False, "error": f"No encontre la asignatura '{name}'"}, []
+    deleted = course.name
+    await db.delete(course)
+    await db.commit()
+    return {"ok": True, "deleted": deleted}, ["courses", "tasks", "grades", "timetable"]
 
 
 async def _h_list_tasks(db, user, args) -> tuple[dict, list[str]]:
@@ -605,7 +563,7 @@ async def _h_create_task(db, user, args) -> tuple[dict, list[str]]:
         status=TaskStatus.pending,
     )
     db.add(task)
-    await db.flush()
+    await db.commit()
     await db.refresh(task)
     return (
         {"ok": True, "created": task.title, "id": str(task.id), "due_at": task.due_at.isoformat() if task.due_at else None},
@@ -656,7 +614,7 @@ async def _h_add_event_to_calendar(db, user, args) -> tuple[dict, list[str]]:
             is_exam=True,
         )
         db.add(exam)
-        await db.flush()
+        await db.commit()
         await db.refresh(exam)
         return (
             {
@@ -685,7 +643,7 @@ async def _h_add_event_to_calendar(db, user, args) -> tuple[dict, list[str]]:
             status=TaskStatus.pending,
         )
         db.add(task)
-        await db.flush()
+        await db.commit()
         await db.refresh(task)
         return (
             {
@@ -706,7 +664,7 @@ async def _h_add_event_to_calendar(db, user, args) -> tuple[dict, list[str]]:
         notes=notes,
     )
     db.add(important)
-    await db.flush()
+    await db.commit()
     await db.refresh(important)
     return (
         {
@@ -748,7 +706,7 @@ async def _h_update_task(db, user, args) -> tuple[dict, list[str]]:
             task.status = TaskStatus(str(args["status"]))
         except ValueError:
             pass
-    await db.flush()
+    await db.commit()
     await db.refresh(task)
     return {"ok": True, "updated": task.title}, ["tasks"]
 
@@ -770,8 +728,21 @@ async def _h_complete_task(db, user, args) -> tuple[dict, list[str]]:
     )
     for subtask in subtasks.scalars().all():
         subtask.status = TaskStatus.completed
-    await db.flush()
+    await db.commit()
     return {"ok": True, "completed": task.title}, ["tasks"]
+
+
+async def _h_delete_task(db, user, args) -> tuple[dict, list[str]]:
+    title = str(args.get("task_title", "")).strip()
+    task, matches = await _find_task(db, user, title)
+    if task is None:
+        if matches:
+            return {"ok": False, "error": "Varias tareas coinciden; se mas especifico", "matches": [t.title for t in matches]}, []
+        return {"ok": False, "error": f"No encontre la tarea '{title}'"}, []
+    deleted = task.title
+    await db.delete(task)
+    await db.commit()
+    return {"ok": True, "deleted": deleted}, ["tasks"]
 
 
 async def _h_list_grades(db, user, args) -> tuple[dict, list[str]]:
@@ -833,9 +804,22 @@ async def _h_add_grade(db, user, args) -> tuple[dict, list[str]]:
         notes=args.get("notes") or None,
     )
     db.add(grade)
-    await db.flush()
+    await db.commit()
     await db.refresh(grade)
     return {"ok": True, "created": grade.title, "id": str(grade.id)}, ["grades", "courses"]
+
+
+async def _h_delete_grade(db, user, args) -> tuple[dict, list[str]]:
+    title = str(args.get("title", "")).strip()
+    grade, matches = await _find_grade(db, user, title)
+    if grade is None:
+        if matches:
+            return {"ok": False, "error": "Varias notas coinciden; se mas especifico", "matches": [g.title for g in matches]}, []
+        return {"ok": False, "error": f"No encontre la nota '{title}'"}, []
+    deleted = grade.title
+    await db.delete(grade)
+    await db.commit()
+    return {"ok": True, "deleted": deleted}, ["grades"]
 
 
 async def _h_list_timetable(db, user, args) -> tuple[dict, list[str]]:
@@ -889,9 +873,23 @@ async def _h_add_timetable_entry(db, user, args) -> tuple[dict, list[str]]:
         location=(args.get("location") or None),
     )
     db.add(entry)
-    await db.flush()
+    await db.commit()
     await db.refresh(entry)
     return {"ok": True, "created": f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}", "id": str(entry.id)}, ["timetable", "courses"]
+
+
+async def _h_delete_timetable_entry(db, user, args) -> tuple[dict, list[str]]:
+    title = str(args.get("title", "")).strip().lower()
+    result = await db.execute(select(TimetableEntry).where(TimetableEntry.user_id == user.id))
+    entries = list(result.scalars().all())
+    matches = [e for e in entries if title in (e.title or "").lower()]
+    if not matches and title.isdigit():
+        matches = [e for e in entries if e.day_of_week == int(title)]
+    if len(matches) != 1:
+        return {"ok": False, "error": f"Coinciden {len(matches)} clases; se mas especifico"}, []
+    await db.delete(matches[0])
+    await db.commit()
+    return {"ok": True, "deleted": "clase"}, ["timetable"]
 
 
 async def _h_add_availability(db, user, args) -> tuple[dict, list[str]]:
@@ -911,7 +909,7 @@ async def _h_add_availability(db, user, args) -> tuple[dict, list[str]]:
         is_active=True,
     )
     db.add(block)
-    await db.flush()
+    await db.commit()
     await db.refresh(block)
     return {"ok": True, "created": f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"}, ["schedule"]
 
@@ -947,15 +945,19 @@ async def _h_get_plan(db, user, args) -> tuple[dict, list[str]]:
 _HANDLERS = {
     "list_courses": _h_list_courses,
     "create_course": _h_create_course,
+    "delete_course": _h_delete_course,
     "list_tasks": _h_list_tasks,
     "add_event_to_calendar": _h_add_event_to_calendar,
     "create_task": _h_create_task,
     "update_task": _h_update_task,
     "complete_task": _h_complete_task,
+    "delete_task": _h_delete_task,
     "list_grades": _h_list_grades,
     "add_grade": _h_add_grade,
+    "delete_grade": _h_delete_grade,
     "list_timetable": _h_list_timetable,
     "add_timetable_entry": _h_add_timetable_entry,
+    "delete_timetable_entry": _h_delete_timetable_entry,
     "add_availability": _h_add_availability,
     "get_plan": _h_get_plan,
 }

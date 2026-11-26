@@ -169,7 +169,6 @@ export interface PanelPreview {
 }
 
 export interface PendingAction {
-  proposal_id: string;
   tool: string;
   args: Record<string, unknown>;
 }
