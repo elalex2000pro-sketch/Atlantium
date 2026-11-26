@@ -212,7 +212,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <NotificationCenter>
       <SystemNotifications />
-      <OverdueTaskPrompt key={user.id} />
+      <OverdueTaskPrompt key={`overdue:${user.id}`} />
       <div
         className={cn(
           "app-shell flex min-h-dvh flex-col bg-transparent md:flex-row",
@@ -393,7 +393,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      <GamificationToast key={user.id} userId={user.id} reduceMotion={reduceMotion} panelOpen={Boolean(aiMode)}
+      <GamificationToast key={`gamification-toast:${user.id}`} userId={user.id} reduceMotion={reduceMotion} panelOpen={Boolean(aiMode)}
         onCelebrate={setCookieCelebrating} outfit={cookieOutfit} panelSlot={aiMode ? toastSlot : null} />
       <GamificationThemeSync />
 
