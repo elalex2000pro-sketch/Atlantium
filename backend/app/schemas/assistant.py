@@ -109,7 +109,8 @@ class AssistantMessageRead(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    source: str  # ai | heuristic
+    source: str  # ai | heuristic | error
+    error_code: str | None = None
     created_at: datetime
     document_id: uuid.UUID | None = None
     pending_action: PendingAction | None = None

@@ -102,7 +102,7 @@ async def test_gateway_covers_providers_and_operations(monkeypatch, provider, op
 
 
 @pytest.mark.asyncio
-async def test_quota_wraps_retry_and_transport_failure(monkeypatch):
+async def test_gateway_does_not_remove_tools_after_400(monkeypatch):
     profile = ai_gateway.AiProfile("local", "http://ollama.invalid/v1", "test", "test", "", 0, 5, True, 2)
     user = SimpleNamespace(id=uuid.uuid4())
     order = []
@@ -115,17 +115,16 @@ async def test_quota_wraps_retry_and_transport_failure(monkeypatch):
 
     def handle(request):
         order.append("post")
-        if "tools" in json.loads(request.content):
-            return httpx.Response(400)
-        raise httpx.ReadTimeout("detalle privado")
+        assert "tools" in json.loads(request.content)
+        return httpx.Response(400)
 
     use_transport(monkeypatch, handle)
     monkeypatch.setattr(ai_gateway, "check_quota", check)
     monkeypatch.setattr(ai_gateway, "record_usage", record)
     payload = ai_gateway.ChatRequest([], tools=[{"type": "function"}])
-    with pytest.raises(httpx.ReadTimeout):
+    with pytest.raises(httpx.HTTPStatusError):
         await ai_gateway.request_ai(None, user, "notas", "texto", payload, profile=profile)
-    assert order == ["check", "post", "record"] * 2
+    assert order == ["check", "post", "record"]
 
 
 @pytest.mark.asyncio
@@ -137,10 +136,65 @@ async def test_quota_rejection_prevents_network_and_accounting(monkeypatch):
     monkeypatch.setattr(ai_gateway, "record_usage", usage)
     use_transport(monkeypatch, lambda request: pytest.fail("No debe conectar"))
     user = SimpleNamespace(id=uuid.uuid4())
-    with pytest.raises(AiRequestRejected):
+    with pytest.raises(AiRequestRejected) as failure:
         await ai_gateway.request_ai(None, user, "libros", "texto", ai_gateway.ChatRequest([]), profile=profile)
+    assert failure.value.headers["X-AI-Error-Code"] == "ai_local_quota"
     quota.assert_awaited_once_with(user, "libros", "clave_del_alumno")
     usage.assert_not_awaited()
+
+
+def gemini_profile():
+    return ai_gateway.AiProfile("gemini", "https://gemini.invalid/openai", "test", "test", "secret", 0, 5, True, 3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "hint", "wait"), [
+    (429, "1", 1), (429, None, None), (429, "120", None),
+    (503, None, 0.5), (503, "0", 0), (503, "invalid", None),
+    (503, "Wed, 21 Oct 2015 07:28:00 GMT", 0), (400, "1", None),
+])
+async def test_gemini_retry_is_bounded_and_preserves_tools(monkeypatch, status, hint, wait):
+    bodies = []
+
+    def handle(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(status, headers={"Retry-After": hint} if hint is not None else {})
+
+    use_transport(monkeypatch, handle)
+    sleep = AsyncMock()
+    check = AsyncMock()
+    record = AsyncMock()
+    monkeypatch.setattr(ai_gateway.asyncio, "sleep", sleep)
+    monkeypatch.setattr(ai_gateway, "check_quota", check)
+    monkeypatch.setattr(ai_gateway, "record_usage", record)
+    payload = ai_gateway.ChatRequest([], tools=[{"type": "function"}])
+    with pytest.raises(httpx.HTTPStatusError):
+        await ai_gateway.request_ai(None, None, "asistente", "texto", payload, profile=gemini_profile())
+    attempts = 1 if wait is None else 2
+    assert len(bodies) == check.await_count == record.await_count == attempts
+    assert all(body["tools"] == payload.tools and body == bodies[0] for body in bodies)
+    if wait is None:
+        sleep.assert_not_awaited()
+    else:
+        sleep.assert_awaited_once_with(wait)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("native", "body", "code"), [
+    (True, {"promptFeedback": {"blockReason": "SAFETY"}}, "ai_blocked_response"),
+    (True, {"candidates": [{"finishReason": "RECITATION", "content": {"parts": [{"text": "private"}]}}]}, "ai_blocked_response"),
+    (True, {"candidates": [{"content": {"parts": [{"text": "private", "thought": True}]}}]}, "ai_empty_response"),
+    (False, {"choices": [{"finish_reason": "content_filter"}]}, "ai_blocked_response"),
+    (False, {"choices": [{"message": {"content": "  "}}]}, "ai_empty_response"),
+    (False, [], "ai_empty_response"),
+])
+async def test_success_status_can_contain_a_blocked_or_empty_reply(monkeypatch, native, body, code):
+    use_transport(monkeypatch, lambda request: httpx.Response(200, json=body))
+    payload = ai_gateway.GeminiRequest("sistema", []) if native else ai_gateway.ChatRequest([])
+    with pytest.raises(ai_gateway.GeminiResponseError) as failure:
+        await ai_gateway.request_ai(None, None, "asistente", "texto", payload, profile=gemini_profile())
+    assert failure.value.code == code
+    assert "private" not in str(failure.value)
 
 
 @pytest.mark.asyncio

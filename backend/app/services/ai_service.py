@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,10 @@ from app.models.task import Task
 from app.models.timetable_entry import TimetableEntry
 from app.models.user import User
 from app.services import ai_gateway, ai_tools
-from app.services.ai_errors import AiRequestRejected, log_provider_error, provider_error_message
+from app.services.ai_errors import (
+    AiErrorCode, AiRequestRejected, GeminiResponseError, gemini_error_code,
+    log_provider_error, provider_error_message,
+)
 from app.services.ai_gateway import AiProfile
 
 logger = get_logger(__name__)
@@ -85,6 +89,18 @@ class AiResult:
     source: str
     pending_action: dict[str, Any] | None = None
     events: list[str] = field(default_factory=list)
+    error_code: AiErrorCode | None = None
+
+
+def _gemini_failure(error: Exception, events: list[str] | None = None) -> AiResult:
+    log_provider_error(logger, "gemini", error)
+    reply = provider_error_message(error, "gemini")
+    if events:
+        reply = (
+            "Algunos cambios ya se guardaron, pero el asistente no pudo terminar. "
+            "Revisa los cambios antes de volver a enviar la solicitud. " + reply
+        )
+    return AiResult(reply, "error", events=events or [], error_code=gemini_error_code(error))
 
 
 async def build_context(db: AsyncSession, user: User) -> dict[str, Any]:
@@ -331,30 +347,27 @@ async def generate_reply(
         try:
             if profile.provider == "gemini" and images:
                 # Gemini recibe las imagenes con `inlineData` en su API nativa.
-                try:
-                    result = await _run_model_gemini(
-                        db, user, profile, system, history, prompt, images
-                    )
-                except AiRequestRejected:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - se intenta la ruta OpenAI
-                    log_provider_error(logger, profile.provider, exc)
-                    result = await _run_model(
-                        db, user, profile, system, history, prompt, images
-                    )
+                result = await _run_model_gemini(db, user, profile, system, history, prompt, images)
             else:
                 result = await _run_model(
                     db, user, profile, system, history, prompt, images
                 )
             if result.reply:
                 return result
+            if profile.provider == "gemini":
+                return _gemini_failure(GeminiResponseError(AiErrorCode.EMPTY_RESPONSE), result.events)
             logger.warning("El modelo devolvio una respuesta vacia; usando heuristico")
         except AiRequestRejected:
             raise
         except Exception as exc:  # noqa: BLE001 - degradacion controlada
-            log_provider_error(logger, profile.provider, exc)
             if profile.provider == "gemini":
-                return AiResult(reply=provider_error_message(exc, profile.provider), source="error")
+                return _gemini_failure(exc)
+            log_provider_error(logger, profile.provider, exc)
+            if profile.tools_enabled and isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 400:
+                return AiResult(
+                    "El proveedor rechazó la solicitud con herramientas. Revisa el modelo en Ajustes.",
+                    "error", error_code=AiErrorCode.INCOMPATIBLE_REQUEST,
+                )
 
     if document_text:
         return AiResult(
@@ -412,40 +425,47 @@ async def _run_model(
     last_text = ""
 
     request = ai_gateway.ChatRequest(messages, tools=tools, use_vision_model=bool(image_data_urls))
-    async for msg in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
-        last_text = (msg.get("content") or "").strip()
-        tool_calls = msg.get("tool_calls") or []
-        if not tool_calls:
-            return AiResult(last_text, "ai", events=events)
+    try:
+        async for msg in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
+            last_text = (msg.get("content") or "").strip()
+            tool_calls = msg.get("tool_calls") or []
+            if not tool_calls:
+                return AiResult(last_text, "ai", events=events)
 
-        messages.append(
-            {"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls}
-        )
-        for call in tool_calls:
-            fn = call.get("function") or {}
-            name = fn.get("name") or ""
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            if name in ai_tools.DESTRUCTIVE:
-                note = last_text or "Voy a realizar una accion destructiva. Confirma si quieres que continue."
-                return AiResult(
-                    note,
-                    "ai",
-                    pending_action={"tool": name, "args": args},
-                    events=events,
-                )
-            payload, ev = await ai_tools.execute_tool(db, user, name, args)
-            events.extend(ev)
             messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.get("id"),
-                    "content": json.dumps(payload, ensure_ascii=False),
-                }
+                {"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls}
             )
+            for call in tool_calls:
+                fn = call.get("function") or {}
+                name = fn.get("name") or ""
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                if name in ai_tools.DESTRUCTIVE:
+                    note = last_text or "Voy a realizar una accion destructiva. Confirma si quieres que continue."
+                    return AiResult(
+                        note,
+                        "ai",
+                        pending_action={"tool": name, "args": args},
+                        events=events,
+                    )
+                payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                events.extend(ev)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id"),
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    }
+                )
+    except Exception as exc:
+        if profile.provider != "gemini" or not events:
+            raise
+        return _gemini_failure(exc, events)
 
+    if profile.provider == "gemini":
+        return _gemini_failure(GeminiResponseError(AiErrorCode.TOOL_LIMIT), events)
     return AiResult(
         last_text or "He realizado las acciones solicitadas. Revisa tus secciones para ver los cambios.",
         "ai",
@@ -558,58 +578,60 @@ async def _run_model_gemini(
     last_text = ""
 
     request = ai_gateway.GeminiRequest(system, contents, tools)
-    async for content in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
-        parts = [
-            part for part in (content.get("parts") or []) if isinstance(part, dict)
-        ]
-        last_text = "".join(
-            str(part.get("text") or "")
-            for part in parts
-            if part.get("text") and not part.get("thought")
-        ).strip()
-        calls = [
-            part["functionCall"]
-            for part in parts
-            if isinstance(part.get("functionCall"), dict)
-        ]
-        if not calls:
-            return AiResult(last_text, "ai", events=events)
+    try:
+        async for content in ai_gateway.tool_turns(db, user, "asistente", operation, request, profile=profile):
+            parts = [
+                part for part in (content.get("parts") or []) if isinstance(part, dict)
+            ]
+            last_text = "".join(
+                str(part.get("text") or "")
+                for part in parts
+                if part.get("text") and not part.get("thought")
+            ).strip()
+            calls = [
+                part["functionCall"]
+                for part in parts
+                if isinstance(part.get("functionCall"), dict)
+            ]
+            if not calls:
+                return AiResult(last_text, "ai", events=events)
 
-        # Se devuelve el turno del modelo tal cual (incluye thoughtSignature en
-        # Gemini 2.5), y despues las respuestas de las herramientas.
-        contents.append({"role": "model", "parts": parts})
-        responses: list[dict[str, Any]] = []
-        for call in calls:
-            name = str(call.get("name") or "")
-            args = call.get("args") if isinstance(call.get("args"), dict) else {}
-            if name in ai_tools.DESTRUCTIVE:
-                note = (
-                    last_text
-                    or "Voy a realizar una accion destructiva. Confirma si quieres que continue."
-                )
-                return AiResult(
-                    note,
-                    "ai",
-                    pending_action={"tool": name, "args": args},
-                    events=events,
-                )
-            payload, ev = await ai_tools.execute_tool(db, user, name, args)
-            events.extend(ev)
-            responses.append(
-                {
-                    "functionResponse": {
-                        "name": name,
-                        "response": {"result": payload},
+            # Se devuelve el turno del modelo tal cual (incluye thoughtSignature en
+            # Gemini 2.5), y despues las respuestas de las herramientas.
+            contents.append({"role": "model", "parts": parts})
+            responses: list[dict[str, Any]] = []
+            for call in calls:
+                name = str(call.get("name") or "")
+                args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                if name in ai_tools.DESTRUCTIVE:
+                    note = (
+                        last_text
+                        or "Voy a realizar una accion destructiva. Confirma si quieres que continue."
+                    )
+                    return AiResult(
+                        note,
+                        "ai",
+                        pending_action={"tool": name, "args": args},
+                        events=events,
+                    )
+                payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                events.extend(ev)
+                responses.append(
+                    {
+                        "functionResponse": {
+                            "name": name,
+                            "response": {"result": payload},
+                        }
                     }
-                }
-            )
-        contents.append({"role": "user", "parts": responses})
+                )
+            contents.append({"role": "user", "parts": responses})
+    except Exception as exc:
+        if not events:
+            raise
+        return _gemini_failure(exc, events)
 
-    return AiResult(
-        last_text or "He realizado las acciones solicitadas. Revisa tus secciones para ver los cambios.",
-        "ai",
-        events=events,
-    )
+    return _gemini_failure(GeminiResponseError(AiErrorCode.TOOL_LIMIT), events)
+
 
 
 _QUESTION_STOPWORDS = {

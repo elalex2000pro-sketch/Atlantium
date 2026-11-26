@@ -69,7 +69,7 @@ def test_panel_sends_only_the_current_message(client, monkeypatch):
 @pytest.mark.parametrize(("status", "message", "expected"), [
     (404, "Not found", "Este modelo ya no está disponible. Elige otro en Ajustes"),
     (400, "Model gemini-3.8-flash is no longer available", "Este modelo ya no está disponible. Elige otro en Ajustes"),
-    (400, "Invalid request", "Este modelo no está disponible con tu clave o no admite esta solicitud."),
+    (400, "Invalid request", "Gemini no admite esta solicitud"),
 ])
 def test_panel_replaces_legacy_gemini_and_distinguishes_errors(client, monkeypatch, status, message, expected):
     headers, _, _ = account(client, "gemini-legacy")
@@ -91,6 +91,9 @@ def test_panel_replaces_legacy_gemini_and_distinguishes_errors(client, monkeypat
     preview = client.post(base + "/panel/preview", headers=headers, json=payload).json()
     response = client.post(base + "/panel/chat", headers=headers, json={**payload, "approval": preview["approval"]})
     assert response.status_code == 502
+    assert response.headers["X-AI-Error-Code"] == (
+        "ai_incompatible_request" if message == "Invalid request" else "ai_model_unavailable"
+    )
     assert response.json()["detail"].startswith(expected)
     assert "clave-de-prueba" not in response.text
 

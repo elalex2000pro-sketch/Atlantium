@@ -19,7 +19,7 @@ from app.models.ai_output import AiOutput
 from app.models.document import Document
 from app.models.user import User
 from app.services import ai_gateway
-from app.services.ai_errors import AiRequestRejected, AiProviderError, log_provider_error, provider_error_message
+from app.services.ai_errors import AiRequestRejected, GeminiResponseError, gemini_error_code, log_provider_error
 from app.services.pdf_service import build_infographic_pdf, build_mindmap_pdf, build_summary_pdf
 
 try:
@@ -208,7 +208,7 @@ async def generate(
         provider = ai_gateway.active_provider(user)
         log_provider_error(logger, provider, exc)
         if provider == "gemini":
-            raise AiProviderError(provider_error_message(exc, provider)) from None
+            raise GeminiResponseError(gemini_error_code(exc)) from None
         source = "heuristic"
         if kind == "summary":
             data = _heuristic_summary(normalize_filename(document.filename), text)

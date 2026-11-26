@@ -4,6 +4,8 @@ import json
 import uuid
 from unittest.mock import AsyncMock
 
+import pytest
+
 from test_peer_classwork import client, setup
 from app.db.session import get_db
 from app.models.book import Book, BookSection
@@ -150,18 +152,16 @@ def test_bulk_failure_rolls_back_all_cards(client, monkeypatch):
     assert 'No se ha creado' in r['answer']
 
 
-def test_provider_without_tools_retries_json(monkeypatch):
+def test_notebook_preserves_tools_when_provider_rejects_request(monkeypatch):
     import httpx
-    from types import SimpleNamespace
     requests=[]
     def handle(request):
         body=json.loads(request.content); requests.append(body)
-        if 'tools' in body: return httpx.Response(400,json={'error':'tools unsupported'})
-        return httpx.Response(200,json={'choices':[{'message':{'content':'{"actions":[]}'}}]})
+        return httpx.Response(400,json={'error':'tools unsupported'})
     original=httpx.AsyncClient
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(handle),**kwargs))
     profile=ai_gateway.AiProfile('local','https://example.invalid/v1','test','test','',0,5,True,1)
     payload=ai_gateway.ChatRequest([{'role':'user','content':'JSON'}],tools=notebook_ai.tool_schemas())
-    result=asyncio.run(ai_gateway.request_ai(None,None,'notas','texto',payload,profile=profile))
-    assert len(requests)==2 and 'tools' not in requests[1]
-    assert json.loads(result['content'])=={'actions':[]}
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(ai_gateway.request_ai(None,None,'notas','texto',payload,profile=profile))
+    assert len(requests)==1 and requests[0]['tools']==payload.tools
