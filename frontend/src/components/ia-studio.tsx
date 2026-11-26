@@ -7,19 +7,13 @@ import { StudioHeader } from "@/components/studio/studio-header";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
-import { api, ApiError, tokenStore } from "@/lib/api";
+import { api } from "@/lib/api";
 import { getOpenBook, subscribeOpenBook, type OpenBookContext } from "@/lib/book-context";
 import { MAX_ATTACHMENTS, MAX_PDF_PAGES, isSupportedAttachment, prepareAttachmentFile } from "@/lib/pdf-to-images";
 import type { AiOutput, AssistantMessage, AssistantStatus, ChatAttachment, DocumentFile, PendingAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ModeTabs } from "@/components/studio/mode-tabs";
 import { DEMO_DURATION_SECONDS, DEMO_TRANSCRIPT, attachmentPreviews, buildSegments, errorMessage, probeAudioDuration, recognitionConstructor, slugify, tempId, type Kind, type SpeechRecognitionLike, type StudioMode } from "@/lib/studio";
-
-type AssistantSend = {
-  args: Parameters<typeof api.chat>;
-  mode: "chat" | "document";
-  token: string | null;
-};
 
 export function IAStudio({
   initialMode = "chat",
@@ -43,8 +37,6 @@ export function IAStudio({
   const recordStartedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bookAbortRef = useRef<AbortController | null>(null);
-  const sendLock = useRef(false);
-  const confirmLock = useRef(false);
 
   const [mode, setMode] = useState<StudioMode>(initialMode);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -54,7 +46,6 @@ export function IAStudio({
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
-  const [retrySend, setRetrySend] = useState<AssistantSend | null>(null);
 
   const [chatInput, setChatInput] = useState("");
   const [docInput, setDocInput] = useState("");
@@ -344,11 +335,7 @@ export function IAStudio({
   async function sendChat(override?: string) {
     const content = (override ?? chatInput).trim();
     const attachments = chatAttachments;
-    if ((!content && attachments.length === 0) || sendLock.current) return;
-    sendLock.current = true;
-    const token = tokenStore.get();
-    let request: AssistantSend | null = null;
-    setRetrySend(null);
+    if ((!content && attachments.length === 0) || sendingMode !== null) return;
 
     const optimistic: AssistantMessage = {
       id: tempId("temp"),
@@ -406,23 +393,22 @@ export function IAStudio({
         }
       }
 
-      if (token !== tokenStore.get()) return;
-      request = {
-        args: [crypto.randomUUID(), content, chatDocumentId || null, attachments, pageContext, pageContextLabel],
-        mode: "chat",
-        token,
-      };
-      await deliver(request);
+      const response = await api.chat(
+        content,
+        chatDocumentId || null,
+        attachments,
+        pageContext,
+        pageContextLabel,
+      );
+      if (response.pending_action) setPending(response.pending_action);
+      setMessages(await api.assistantMessages(120));
+      markResponsePulse();
     } catch (error) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
-      if (token === tokenStore.get()) {
-        if (!rememberRetry(request, error)) {
-          setChatInput(content);
-          setChatAttachments(attachments);
-        }
-      }
+      setChatInput(content);
+      setChatAttachments(attachments);
+      setNotice(errorMessage(error));
     } finally {
-      sendLock.current = false;
       setSendingMode(null);
     }
   }
@@ -435,14 +421,7 @@ export function IAStudio({
   async function sendDocument() {
     const content = docInput.trim();
     const attachments = docAttachments;
-    if ((!content && attachments.length === 0) || !docId || sendLock.current) return;
-    sendLock.current = true;
-    const request: AssistantSend = {
-      args: [crypto.randomUUID(), content, docId, attachments],
-      mode: "document",
-      token: tokenStore.get(),
-    };
-    setRetrySend(null);
+    if ((!content && attachments.length === 0) || !docId || sendingMode !== null) return;
     const optimistic: AssistantMessage = {
       id: tempId("doc"),
       role: "user",
@@ -459,80 +438,36 @@ export function IAStudio({
     setPending(null);
     setNotice(null);
     try {
-      await deliver(request);
+      const response = await api.chat(content, docId, attachments);
+      if (response.pending_action) setPending(response.pending_action);
+      setDocMessages((current) => [
+        ...current,
+        {
+          id: tempId("doc-assistant"),
+          role: "assistant",
+          content: response.reply,
+          source: response.source,
+          document_id: response.document_id,
+          created_at: response.created_at || new Date().toISOString(),
+        },
+      ]);
+      markResponsePulse();
     } catch (error) {
       setDocMessages((current) => current.filter((message) => message.id !== optimistic.id));
-      if (request.token === tokenStore.get() && !rememberRetry(request, error)) {
-        setDocInput(content);
-        setDocAttachments(attachments);
-      }
+      setDocInput(content);
+      setDocAttachments(attachments);
+      setNotice(errorMessage(error));
     } finally {
-      sendLock.current = false;
-      setSendingMode(null);
-    }
-  }
-
-  function rememberRetry(request: AssistantSend | null, error: unknown) {
-    setNotice(errorMessage(error));
-    const retryable = request && (
-      !(error instanceof ApiError) || error.status === 0 || error.status === 409 || error.status >= 500
-    );
-    setRetrySend(retryable ? request : null);
-    return retryable;
-  }
-
-  async function deliver(request: AssistantSend) {
-    const response = await api.chat(...request.args);
-    if (request.token !== tokenStore.get()) return;
-    if (!response || typeof response.reply !== "string") {
-      throw new Error("La respuesta se recibió incompleta. Puedes recuperar el resultado del mismo envío.");
-    }
-    setPending(response.pending_action);
-    if (request.mode === "chat") {
-      const history = await api.assistantMessages(120);
-      if (request.token !== tokenStore.get()) return;
-      setMessages(history);
-    } else {
-      setDocMessages((current) => [...current, {
-        id: request.args[0],
-        role: "assistant",
-        content: response.reply,
-        source: response.source,
-        document_id: response.document_id,
-        created_at: response.created_at || new Date().toISOString(),
-      }]);
-    }
-    markResponsePulse();
-  }
-
-  async function retryLastSend() {
-    if (!retrySend || sendLock.current || retrySend.token !== tokenStore.get()) return;
-    sendLock.current = true;
-    setSendingMode(retrySend.mode);
-    setRetrySend(null);
-    setNotice(null);
-    try {
-      await deliver(retrySend);
-    } catch (error) {
-      if (retrySend.token === tokenStore.get()) rememberRetry(retrySend, error);
-    } finally {
-      sendLock.current = false;
       setSendingMode(null);
     }
   }
 
   async function confirmPending(approve: boolean) {
-    if (!pending || confirmLock.current) return;
-    confirmLock.current = true;
-    const token = tokenStore.get();
+    if (!pending || confirming) return;
     setConfirming(true);
     setNotice(null);
     try {
-      const result = await api.confirmAction(pending.proposal_id, approve);
-      if (token !== tokenStore.get()) return;
-      if (!result || typeof result.reply !== "string") {
-        throw new Error("La confirmación se recibió incompleta. Vuelve a pulsar la misma opción para recuperar el resultado.");
-      }
+      const result = await api.confirmAction(pending.tool, pending.args, approve);
       setPending(null);
       if (mode === "document") {
         setDocMessages((current) => [
@@ -547,15 +482,12 @@ export function IAStudio({
           },
         ]);
       } else {
-        const history = await api.assistantMessages(120);
-        if (token !== tokenStore.get()) return;
-        setMessages(history);
+        setMessages(await api.assistantMessages(120));
       }
       markResponsePulse();
     } catch (error) {
-      if (token === tokenStore.get()) setNotice(errorMessage(error));
+      setNotice(errorMessage(error));
     } finally {
-      confirmLock.current = false;
       setConfirming(false);
     }
   }
@@ -989,11 +921,6 @@ export function IAStudio({
       {notice && (
         <div className="relative z-10 mx-3 mb-1 mt-1.5 flex items-start gap-2 rounded-2xl border border-slate-300/40 bg-slate-100/65 px-3 py-2 text-[11px] text-slate-600 backdrop-blur-xl dark:border-white/10 dark:bg-black/35 dark:text-white/60 sm:mx-5">
           <span className="min-w-0 flex-1">{notice}</span>
-          {retrySend && (
-            <button type="button" onClick={() => void retryLastSend()} disabled={sendingMode !== null}>
-              Reintentar el mismo envío
-            </button>
-          )}
           <button type="button" onClick={() => setNotice(null)} aria-label="Cerrar aviso">
             <X className="h-3.5 w-3.5 opacity-50" />
           </button>
