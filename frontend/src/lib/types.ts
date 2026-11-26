@@ -183,6 +183,13 @@ export interface ChatResponse {
   pending_action: PendingAction | null;
 }
 
+export interface ProposalStatus {
+  status: "pending" | "decided";
+  pending_action: PendingAction | null;
+  decision: boolean | null;
+  response: ChatResponse | null;
+}
+
 export interface DocumentFile {
   id: string;
   user_id: string;

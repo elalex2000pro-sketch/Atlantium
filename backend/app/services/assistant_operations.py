@@ -56,6 +56,15 @@ async def reserve(db, user_id: uuid.UUID, request_id: uuid.UUID, digest: str):
     return existing, False
 
 
+async def find(db, user_id: uuid.UUID, *, request_id=None, proposal_id=None) -> Operation:
+    """Consulta de solo lectura de una operación perteneciente al usuario."""
+    key = Operation.request_id == request_id if request_id is not None else Operation.proposal_id == proposal_id
+    operation = await db.scalar(select(Operation).where(Operation.user_id == user_id, key))
+    if operation is None:
+        raise HTTPException(404, "No se encontró la operación.")
+    return operation
+
+
 async def lock(db, user_id: uuid.UUID, *, request_id=None, proposal_id=None) -> Operation:
     key = Operation.request_id == request_id if request_id is not None else Operation.proposal_id == proposal_id
     filters = (Operation.user_id == user_id, key)

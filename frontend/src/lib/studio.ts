@@ -191,3 +191,121 @@ export function probeAudioDuration(file: File): Promise<number> {
     audio.src = url;
   });
 }
+
+const STUDIO_PENDING_PREFIX = "atlantium_studio_pending_op:";
+const OPERATION_REPLAY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PROPOSAL_TTL_MS = 20 * 60 * 1000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type PersistedStudioSend = {
+  kind: "chat";
+  requestId: string;
+  mode: "chat" | "document";
+  documentId: string | null;
+  startedAt: number;
+};
+
+export type PersistedStudioConfirmation = {
+  kind: "confirm";
+  proposalId: string;
+  approve: boolean | null;
+  mode: "chat" | "document";
+  documentId: string | null;
+  tool: string;
+  elementLabel: string | null;
+  startedAt: number;
+};
+
+export type PersistedStudioOperation = PersistedStudioSend | PersistedStudioConfirmation;
+
+export function currentStudioUserKey(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as {
+      sub?: unknown;
+    };
+    return typeof decoded.sub === "string" && decoded.sub.trim() ? decoded.sub.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function studioStorageKey(userKey: string): string {
+  return `${STUDIO_PENDING_PREFIX}${userKey}`;
+}
+
+export function readPendingStudioOperation(userKey: string | null): PersistedStudioOperation | null {
+  if (typeof window === "undefined" || !userKey) return null;
+  try {
+    const raw = window.localStorage.getItem(studioStorageKey(userKey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedStudioOperation> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    const mode = parsed.mode === "document" ? "document" : parsed.mode === "chat" ? "chat" : null;
+    const startedAt = typeof parsed.startedAt === "number" ? parsed.startedAt : 0;
+    const documentId = typeof parsed.documentId === "string" ? parsed.documentId : null;
+    if (!mode || !Number.isFinite(startedAt) || startedAt <= 0) {
+      window.localStorage.removeItem(studioStorageKey(userKey));
+      return null;
+    }
+    const elapsed = Date.now() - startedAt;
+    if (parsed.kind === "chat") {
+      if (typeof parsed.requestId !== "string" || !UUID_RE.test(parsed.requestId) || elapsed > OPERATION_REPLAY_TTL_MS) {
+        window.localStorage.removeItem(studioStorageKey(userKey));
+        return null;
+      }
+      return { kind: "chat", requestId: parsed.requestId, mode, documentId, startedAt };
+    }
+    if (parsed.kind === "confirm") {
+      const approve = typeof parsed.approve === "boolean" ? parsed.approve : null;
+      const maxAge = approve === null ? PROPOSAL_TTL_MS : OPERATION_REPLAY_TTL_MS;
+      if (
+        typeof parsed.proposalId !== "string"
+        || !UUID_RE.test(parsed.proposalId)
+        || typeof parsed.tool !== "string"
+        || !parsed.tool
+        || elapsed > maxAge
+      ) {
+        window.localStorage.removeItem(studioStorageKey(userKey));
+        return null;
+      }
+      return {
+        kind: "confirm",
+        proposalId: parsed.proposalId,
+        approve,
+        mode,
+        documentId,
+        tool: parsed.tool,
+        elementLabel: typeof parsed.elementLabel === "string" ? parsed.elementLabel : null,
+        startedAt,
+      };
+    }
+    window.localStorage.removeItem(studioStorageKey(userKey));
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function writePendingStudioOperation(
+  userKey: string | null,
+  operation: PersistedStudioOperation,
+): void {
+  if (typeof window === "undefined" || !userKey) return;
+  try {
+    window.localStorage.setItem(studioStorageKey(userKey), JSON.stringify(operation));
+  } catch {
+    // Sin almacenamiento disponible seguimos con el estado en memoria.
+  }
+}
+
+export function clearPendingStudioOperation(userKey: string | null): void {
+  if (typeof window === "undefined" || !userKey) return;
+  try {
+    window.localStorage.removeItem(studioStorageKey(userKey));
+  } catch {
+    // Nada que limpiar.
+  }
+}

@@ -119,6 +119,15 @@ class ChatResponse(BaseModel):
     pending_action: PendingAction | None = None
 
 
+class ProposalStatus(BaseModel):
+    """Estado de solo lectura de una propuesta pendiente o ya decidida."""
+
+    status: Literal["pending", "decided"]
+    pending_action: PendingAction | None = None
+    decision: bool | None = None
+    response: ChatResponse | None = None
+
+
 class AssistantStatus(BaseModel):
     enabled: bool
     configured: bool

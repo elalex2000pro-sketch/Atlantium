@@ -13,7 +13,25 @@ import { MAX_ATTACHMENTS, MAX_PDF_PAGES, isSupportedAttachment, prepareAttachmen
 import type { AiOutput, AssistantMessage, AssistantStatus, ChatAttachment, DocumentFile, PendingAction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ModeTabs } from "@/components/studio/mode-tabs";
-import { DEMO_DURATION_SECONDS, DEMO_TRANSCRIPT, attachmentPreviews, buildSegments, errorMessage, probeAudioDuration, recognitionConstructor, slugify, tempId, type Kind, type SpeechRecognitionLike, type StudioMode } from "@/lib/studio";
+import {
+  clearPendingStudioOperation,
+  currentStudioUserKey,
+  DEMO_DURATION_SECONDS,
+  DEMO_TRANSCRIPT,
+  attachmentPreviews,
+  buildSegments,
+  errorMessage,
+  probeAudioDuration,
+  readPendingStudioOperation,
+  recognitionConstructor,
+  slugify,
+  tempId,
+  writePendingStudioOperation,
+  type Kind,
+  type PersistedStudioOperation,
+  type SpeechRecognitionLike,
+  type StudioMode,
+} from "@/lib/studio";
 
 type AssistantSend = {
   args: Parameters<typeof api.chat>;
@@ -45,6 +63,7 @@ export function IAStudio({
   const bookAbortRef = useRef<AbortController | null>(null);
   const sendLock = useRef(false);
   const confirmLock = useRef(false);
+  const activeUserKeyRef = useRef<string | null>(currentStudioUserKey(tokenStore.get()));
 
   const [mode, setMode] = useState<StudioMode>(initialMode);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -55,6 +74,8 @@ export function IAStudio({
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [retrySend, setRetrySend] = useState<AssistantSend | null>(null);
+  const [recoverableOp, setRecoverableOp] = useState<PersistedStudioOperation | null>(null);
+  const [checkingRecovery, setCheckingRecovery] = useState(false);
 
   const [chatInput, setChatInput] = useState("");
   const [docInput, setDocInput] = useState("");
@@ -94,8 +115,171 @@ export function IAStudio({
   const [responsePulse, setResponsePulse] = useState(false);
   const responsePulseTimer = useRef<number | null>(null);
 
+  const applyRecoveredResponse = useCallback(
+    async (
+      targetMode: "chat" | "document",
+      documentId: string | null,
+      response: import("@/lib/types").ChatResponse,
+      userKey: string | null,
+      messageId?: string,
+    ) => {
+      if (userKey !== currentStudioUserKey(tokenStore.get())) return;
+      setPending(response.pending_action);
+      if (response.pending_action) {
+        writePendingStudioOperation(userKey, {
+          kind: "confirm",
+          proposalId: response.pending_action.proposal_id,
+          approve: null,
+          mode: targetMode,
+          documentId: response.document_id ?? documentId ?? null,
+          tool: response.pending_action.tool,
+          elementLabel:
+            typeof response.pending_action.args?.elemento === "string"
+              ? response.pending_action.args.elemento
+              : null,
+          startedAt: Date.now(),
+        });
+      } else {
+        clearPendingStudioOperation(userKey);
+      }
+      if (targetMode === "chat") {
+        const history = await api.assistantMessages(120);
+        if (userKey !== currentStudioUserKey(tokenStore.get())) return;
+        setMessages(history);
+      } else {
+        const nextId = messageId || tempId("doc-rec");
+        setDocMessages((current) => {
+          if (
+            current.some(
+              (item) =>
+                item.id === nextId ||
+                (item.role === "assistant" &&
+                  item.content === response.reply &&
+                  item.created_at === response.created_at),
+            )
+          ) {
+            return current;
+          }
+          return [
+            ...current,
+            {
+              id: nextId,
+              role: "assistant",
+              content: response.reply,
+              source: response.source,
+              document_id: response.document_id ?? documentId,
+              created_at: response.created_at || new Date().toISOString(),
+            },
+          ];
+        });
+      }
+      markResponsePulse();
+    },
+    [],
+  );
+
+  const recoverOperation = useCallback(
+    async (operation: PersistedStudioOperation, userKey: string) => {
+      setCheckingRecovery(true);
+      try {
+        if (operation.kind === "chat") {
+          const response = await api.assistantOperation(operation.requestId, operation.documentId);
+          if (userKey !== currentStudioUserKey(tokenStore.get())) return;
+          if (response.error_code === "ai_operation_interrupted") {
+            clearPendingStudioOperation(userKey);
+            setRecoverableOp(null);
+            setNotice(response.reply);
+            return;
+          }
+          setRecoverableOp(null);
+          if (operation.mode === "document" && operation.documentId) {
+            setMode("document");
+            setDocId(operation.documentId);
+          }
+          await applyRecoveredResponse(
+            operation.mode,
+            operation.documentId,
+            response,
+            userKey,
+            operation.requestId,
+          );
+          setNotice("Se ha recuperado el resultado del último envío.");
+          return;
+        }
+
+        const proposal = await api.assistantProposal(operation.proposalId, operation.documentId);
+        if (userKey !== currentStudioUserKey(tokenStore.get())) return;
+        if (proposal.status === "pending" && proposal.pending_action) {
+          if (operation.mode === "document" && operation.documentId) {
+            setMode("document");
+            setDocId(operation.documentId);
+          }
+          setPending(proposal.pending_action);
+          setRecoverableOp(null);
+          if (operation.approve !== null) {
+            setNotice("La confirmación anterior no se completó. Pulsa de nuevo para confirmar o cancelar.");
+          }
+          return;
+        }
+        if (proposal.status === "decided" && proposal.response) {
+          clearPendingStudioOperation(userKey);
+          setRecoverableOp(null);
+          setPending(null);
+          if (operation.mode === "document" && operation.documentId) {
+            setMode("document");
+            setDocId(operation.documentId);
+          }
+          await applyRecoveredResponse(operation.mode, operation.documentId, proposal.response, userKey);
+          setNotice("Se ha recuperado el resultado de tu confirmación.");
+        }
+      } catch (error) {
+        if (userKey !== currentStudioUserKey(tokenStore.get())) return;
+        if (error instanceof ApiError) {
+          if (error.status === 409) {
+            setRecoverableOp(operation);
+            setNotice(
+              "El último envío sigue ejecutándose en el servidor. Pulsa «Comprobar estado» en unos segundos.",
+            );
+            return;
+          }
+          if (error.status === 404) {
+            if (error.message === "Not Found") return;
+            clearPendingStudioOperation(userKey);
+            setRecoverableOp(null);
+            if (operation.kind === "confirm") setPending(null);
+            if (operation.kind === "chat") {
+              setNotice("El último envío no llegó al servidor. Escríbelo de nuevo si quieres enviarlo.");
+            }
+            return;
+          }
+          if (error.status === 410) {
+            clearPendingStudioOperation(userKey);
+            setRecoverableOp(null);
+            if (operation.kind === "confirm") setPending(null);
+            setNotice(error.message);
+            return;
+          }
+        }
+        setRecoverableOp(operation);
+        setNotice("No se pudo comprobar el estado de la operación pendiente. Pulsa «Comprobar estado».");
+      } finally {
+        setCheckingRecovery(false);
+      }
+    },
+    [applyRecoveredResponse],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
+    const userKey = currentStudioUserKey(tokenStore.get());
+    if (activeUserKeyRef.current !== userKey) {
+      activeUserKeyRef.current = userKey;
+      setRetrySend(null);
+      setRecoverableOp(null);
+      setPending(null);
+      setDocMessages([]);
+      setNotice(null);
+    }
     try {
       const [history, fileList, outputList, assistantStatus] = await Promise.all([
         api.assistantMessages(120),
@@ -107,12 +291,16 @@ export function IAStudio({
       setFiles(fileList);
       setOutputs(outputList);
       setStatus(assistantStatus);
+      const persisted = readPendingStudioOperation(userKey);
+      if (persisted && userKey) {
+        await recoverOperation(persisted, userKey);
+      }
     } catch (error) {
       setNotice(errorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [recoverOperation]);
 
   useEffect(() => {
     void load();
@@ -347,8 +535,10 @@ export function IAStudio({
     if ((!content && attachments.length === 0) || sendLock.current) return;
     sendLock.current = true;
     const token = tokenStore.get();
+    const userKey = currentStudioUserKey(token);
     let request: AssistantSend | null = null;
     setRetrySend(null);
+    setRecoverableOp(null);
 
     const optimistic: AssistantMessage = {
       id: tempId("temp"),
@@ -407,11 +597,19 @@ export function IAStudio({
       }
 
       if (token !== tokenStore.get()) return;
+      const requestId = crypto.randomUUID();
       request = {
-        args: [crypto.randomUUID(), content, chatDocumentId || null, attachments, pageContext, pageContextLabel],
+        args: [requestId, content, chatDocumentId || null, attachments, pageContext, pageContextLabel],
         mode: "chat",
         token,
       };
+      writePendingStudioOperation(userKey, {
+        kind: "chat",
+        requestId,
+        mode: "chat",
+        documentId: chatDocumentId || null,
+        startedAt: Date.now(),
+      });
       await deliver(request);
     } catch (error) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
@@ -437,12 +635,23 @@ export function IAStudio({
     const attachments = docAttachments;
     if ((!content && attachments.length === 0) || !docId || sendLock.current) return;
     sendLock.current = true;
+    const token = tokenStore.get();
+    const userKey = currentStudioUserKey(token);
+    const requestId = crypto.randomUUID();
     const request: AssistantSend = {
-      args: [crypto.randomUUID(), content, docId, attachments],
+      args: [requestId, content, docId, attachments],
       mode: "document",
-      token: tokenStore.get(),
+      token,
     };
     setRetrySend(null);
+    setRecoverableOp(null);
+    writePendingStudioOperation(userKey, {
+      kind: "chat",
+      requestId,
+      mode: "document",
+      documentId: docId,
+      startedAt: Date.now(),
+    });
     const optimistic: AssistantMessage = {
       id: tempId("doc"),
       role: "user",
@@ -474,10 +683,16 @@ export function IAStudio({
 
   function rememberRetry(request: AssistantSend | null, error: unknown) {
     setNotice(errorMessage(error));
-    const retryable = request && (
-      !(error instanceof ApiError) || error.status === 0 || error.status === 409 || error.status >= 500
+    const retryable = Boolean(
+      request && (
+        !(error instanceof ApiError) || error.status === 0 || error.status === 409 || error.status >= 500
+      ),
     );
     setRetrySend(retryable ? request : null);
+    if (!retryable && request) {
+      clearPendingStudioOperation(currentStudioUserKey(request.token));
+      setRecoverableOp(null);
+    }
     return retryable;
   }
 
@@ -487,22 +702,14 @@ export function IAStudio({
     if (!response || typeof response.reply !== "string") {
       throw new Error("La respuesta se recibió incompleta. Puedes recuperar el resultado del mismo envío.");
     }
-    setPending(response.pending_action);
-    if (request.mode === "chat") {
-      const history = await api.assistantMessages(120);
-      if (request.token !== tokenStore.get()) return;
-      setMessages(history);
-    } else {
-      setDocMessages((current) => [...current, {
-        id: request.args[0],
-        role: "assistant",
-        content: response.reply,
-        source: response.source,
-        document_id: response.document_id,
-        created_at: response.created_at || new Date().toISOString(),
-      }]);
-    }
-    markResponsePulse();
+    const userKey = currentStudioUserKey(request.token);
+    await applyRecoveredResponse(
+      request.mode,
+      request.args[2] ?? null,
+      response,
+      userKey,
+      request.args[0],
+    );
   }
 
   async function retryLastSend() {
@@ -525,6 +732,19 @@ export function IAStudio({
     if (!pending || confirmLock.current) return;
     confirmLock.current = true;
     const token = tokenStore.get();
+    const userKey = currentStudioUserKey(token);
+    const activeDocumentId = mode === "document" ? docId || null : chatDocumentId || null;
+    const targetMode: "chat" | "document" = mode === "document" ? "document" : "chat";
+    writePendingStudioOperation(userKey, {
+      kind: "confirm",
+      proposalId: pending.proposal_id,
+      approve,
+      mode: targetMode,
+      documentId: activeDocumentId,
+      tool: pending.tool,
+      elementLabel: typeof pending.args?.elemento === "string" ? pending.args.elemento : null,
+      startedAt: Date.now(),
+    });
     setConfirming(true);
     setNotice(null);
     try {
@@ -533,8 +753,10 @@ export function IAStudio({
       if (!result || typeof result.reply !== "string") {
         throw new Error("La confirmación se recibió incompleta. Vuelve a pulsar la misma opción para recuperar el resultado.");
       }
+      clearPendingStudioOperation(userKey);
+      setRecoverableOp(null);
       setPending(null);
-      if (mode === "document") {
+      if (targetMode === "document") {
         setDocMessages((current) => [
           ...current,
           {
@@ -553,7 +775,14 @@ export function IAStudio({
       }
       markResponsePulse();
     } catch (error) {
-      if (token === tokenStore.get()) setNotice(errorMessage(error));
+      if (token === tokenStore.get()) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
+          clearPendingStudioOperation(userKey);
+          setRecoverableOp(null);
+          setPending(null);
+        }
+        setNotice(errorMessage(error));
+      }
     } finally {
       confirmLock.current = false;
       setConfirming(false);
@@ -565,6 +794,9 @@ export function IAStudio({
     setClearing(true);
     try {
       await api.clearAssistant();
+      clearPendingStudioOperation(currentStudioUserKey(tokenStore.get()));
+      setRetrySend(null);
+      setRecoverableOp(null);
       setMessages([]);
       setDocMessages([]);
       setChatAttachments([]);
@@ -992,6 +1224,18 @@ export function IAStudio({
           {retrySend && (
             <button type="button" onClick={() => void retryLastSend()} disabled={sendingMode !== null}>
               Reintentar el mismo envío
+            </button>
+          )}
+          {!retrySend && recoverableOp && (
+            <button
+              type="button"
+              onClick={() => {
+                const userKey = currentStudioUserKey(tokenStore.get());
+                if (userKey) void recoverOperation(recoverableOp, userKey);
+              }}
+              disabled={checkingRecovery || sendingMode !== null}
+            >
+              {checkingRecovery ? "Comprobando…" : "Comprobar estado"}
             </button>
           )}
           <button type="button" onClick={() => setNotice(null)} aria-label="Cerrar aviso">
