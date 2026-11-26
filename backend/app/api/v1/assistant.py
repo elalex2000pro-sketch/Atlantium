@@ -44,7 +44,7 @@ from app.schemas.assistant import (
     PendingAction,
 )
 from app.services import ai_gateway, ai_panel_context, ai_service, ai_studio_service, ai_tools
-from app.services.ai_errors import AiRequestRejected, log_provider_error, provider_error_message
+from app.services.ai_errors import AiRequestRejected, gemini_error_code, log_provider_error, provider_error_message
 from app.services.realtime import notify
 
 logger = get_logger(__name__)
@@ -190,7 +190,10 @@ async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: D
         raise
     except Exception as exc:  # noqa: BLE001 - solo se devuelve el mensaje seguro
         log_provider_error(logger, profile.provider, exc)
-        raise HTTPException(status_code=502, detail=provider_error_message(exc, profile.provider)) from None
+        headers = {"X-AI-Error-Code": gemini_error_code(exc).value} if profile.provider == "gemini" else None
+        raise HTTPException(
+            status_code=502, detail=provider_error_message(exc, profile.provider), headers=headers,
+        ) from None
 
     reply = result.get("content")
     if not isinstance(reply, str) or not reply.strip():
@@ -295,6 +298,7 @@ async def chat(
         created_at=assistant_message.created_at,
         document_id=payload.document_id,
         pending_action=pending,
+        error_code=result_ai.error_code,
     )
 
 

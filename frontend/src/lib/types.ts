@@ -174,6 +174,7 @@ export interface PendingAction {
 }
 
 export interface ChatResponse {
+  error_code?: string | null;
   reply: string;
   source: string;
   created_at: string;

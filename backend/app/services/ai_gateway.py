@@ -6,6 +6,8 @@ import ipaddress
 import socket
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal
 
 import httpx
@@ -17,7 +19,9 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.user import User
 from app.models.user_ai_key import UserAiKey
-from app.services.ai_errors import REMOTE_PROVIDERS, AiKeyRequired, AiRequestRejected, log_provider_error
+from app.services.ai_errors import (
+    REMOTE_PROVIDERS, AiErrorCode, AiKeyRequired, AiRequestRejected, GeminiResponseError, log_provider_error,
+)
 
 logger = get_logger(__name__)
 Source = Literal["studio", "repaso", "notas", "libros", "horario", "transcripcion", "asistente"]
@@ -198,7 +202,12 @@ async def _post(
             headers = {**headers, "Host": url.netloc.decode("ascii")}
             extensions["sni_hostname"] = url.raw_host.decode("ascii")
             endpoint = str(url.copy_with(host=address))
-    await check_quota(user, source, FUNDING)
+    try:
+        await check_quota(user, source, FUNDING)
+    except AiRequestRejected as exc:
+        if exc.status_code == 429:
+            exc.headers = {**(exc.headers or {}), "X-AI-Error-Code": AiErrorCode.LOCAL_QUOTA.value}
+        raise
     try:
         async with httpx.AsyncClient(timeout=timeout, trust_env=not pinned, follow_redirects=False) as client:
             response = await client.post(endpoint, headers=headers, extensions=extensions, **body)
@@ -223,9 +232,72 @@ def _audio_unsupported() -> AiRequestRejected:
     )
 
 
+def _gemini_retry_delay(response: httpx.Response) -> float | None:
+    # A quota response without a deadline may be a daily or billing limit.
+    hint = response.headers.get("Retry-After")
+    if hint is None:
+        return 0.5 if response.status_code == 503 else None
+    hint = hint.strip()
+    if hint.isascii() and hint.isdecimal():
+        seconds = float(hint)
+    else:
+        try:
+            date = parsedate_to_datetime(hint)
+            if date.tzinfo is None:
+                return None
+            seconds = max(0.0, (date - datetime.now(timezone.utc)).total_seconds())
+        except (ValueError, TypeError, OverflowError):
+            return None
+    # Longer delays are left to the user rather than shortening the wait.
+    return seconds if seconds <= 2 else None
+
+
+_GEMINI_BLOCKED = {
+    "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY",
+    "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION", "MODEL_ARMOR", "JAILBREAK", "content_filter",
+}
+
+
+def _gemini_content(response: httpx.Response, native: bool) -> dict[str, Any]:
+    try:
+        body = response.json()
+    except ValueError:
+        raise GeminiResponseError(AiErrorCode.EMPTY_RESPONSE) from None
+    if not isinstance(body, dict):
+        raise GeminiResponseError(AiErrorCode.EMPTY_RESPONSE)
+
+    feedback = body.get("promptFeedback")
+    if isinstance(feedback, dict) and feedback.get("blockReason") not in (None, "", "BLOCK_REASON_UNSPECIFIED"):
+        raise GeminiResponseError(AiErrorCode.BLOCKED_RESPONSE)
+    choices = body.get("candidates" if native else "choices")
+    first = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+    reason = first.get("finishReason" if native else "finish_reason")
+    content = first.get("content" if native else "message")
+    if isinstance(reason, str) and reason in _GEMINI_BLOCKED:
+        raise GeminiResponseError(AiErrorCode.BLOCKED_RESPONSE)
+    if isinstance(content, dict):
+        if content.get("refusal"):
+            raise GeminiResponseError(AiErrorCode.BLOCKED_RESPONSE)
+        if native:
+            parts = content.get("parts")
+            if isinstance(parts, list) and any(
+                isinstance(part, dict) and (
+                    isinstance(part.get("functionCall"), dict)
+                    or (not part.get("thought") and str(part.get("text") or "").strip())
+                ) for part in parts
+            ):
+                return content
+        elif content.get("tool_calls") or (
+            isinstance(content.get("content"), str) and content["content"].strip()
+        ):
+            return content
+    raise GeminiResponseError(AiErrorCode.EMPTY_RESPONSE)
+
+
 async def request_ai(
     db: AsyncSession, user: User, source: Source, operation: Operation,
     request: ChatRequest | GeminiRequest | AudioRequest, *, profile: AiProfile | None = None,
+    allow_retry: bool = True,
 ) -> dict[str, Any]:
     """Envía un turno o una transcripción y aplica cuota a cada intento real."""
     profile = profile if profile is not None else await load_profile(db, user)
@@ -269,7 +341,6 @@ async def request_ai(
             "generationConfig": {"temperature": profile.temperature},
         }
         tool_options = {"toolConfig": {"functionCallingConfig": {"mode": "AUTO"}}}
-        result_list, result_key = "candidates", "content"
     else:
         if profile.api_key:
             headers["Authorization"] = f"Bearer {profile.api_key}"
@@ -288,16 +359,20 @@ async def request_ai(
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
         tool_options = {"tool_choice": "auto"}
-        result_list, result_key = "choices", "message"
-    response = await _post(
-        user, source, profile, endpoint, timeout, headers,
-        json={**payload, "tools": request.tools, **tool_options} if request.tools else payload,
-    )
-    if response.status_code == 400 and request.tools:
-        response = await _post(user, source, profile, endpoint, timeout, headers, json=payload)
+    body = {**payload, "tools": request.tools, **tool_options} if request.tools else payload
+    response = await _post(user, source, profile, endpoint, timeout, headers, json=body)
+    # Only replay an explicit transient provider rejection. Never replay a timeout
+    # or a subsequent tool turn, even if the provider received the request.
+    if profile.provider == "gemini" and allow_retry and response.status_code in {429, 503}:
+        delay = _gemini_retry_delay(response)
+        if delay is not None:
+            await asyncio.sleep(delay)
+            response = await _post(user, source, profile, endpoint, timeout, headers, json=body)
     response.raise_for_status()
-    results = response.json().get(result_list) or []
-    return (results[0].get(result_key) or {}) if results else {}
+    if profile.provider == "gemini":
+        return _gemini_content(response, isinstance(request, GeminiRequest))
+    results = response.json().get("choices") or []
+    return (results[0].get("message") or {}) if results else {}
 
 
 async def tool_turns(
@@ -306,7 +381,7 @@ async def tool_turns(
     before_turn: Callable[[], None] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Limita las rondas. El flujo añade al historial los resultados de sus acciones."""
-    for _ in range(max(1, profile.max_tool_iterations)):
+    for turn in range(max(1, profile.max_tool_iterations)):
         if before_turn is not None:
             before_turn()
-        yield await request_ai(db, user, source, operation, request, profile=profile)
+        yield await request_ai(db, user, source, operation, request, profile=profile, allow_retry=turn == 0)

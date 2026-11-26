@@ -34,7 +34,7 @@ async def test_run_model_envia_historial_y_mensaje_actual(
     captured: dict[str, Any] = {}
 
     async def fake_post_chat(
-        _db, _user, _source, _operation, request, *, profile: AiProfile,
+        _db, _user, _source, _operation, request, *, profile: AiProfile, allow_retry: bool,
     ) -> dict[str, Any]:
         captured.update(messages=request.messages, model=profile.model, tools=request.tools)
         return {"content": "respuesta del modelo"}

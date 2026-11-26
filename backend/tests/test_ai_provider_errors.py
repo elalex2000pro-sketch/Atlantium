@@ -13,7 +13,61 @@ from test_chat_flow import account
 from test_peer_classwork import client
 
 from app.services import ai_gateway, ai_service, ai_studio_service
-from app.services.ai_errors import AiProviderError, provider_error_message
+from app.services.ai_errors import AiProviderError, gemini_error_code, provider_error_message
+
+
+@pytest.mark.parametrize(("status", "detail", "code"), [
+    (400, {"details": [{"reason": "API_KEY_INVALID"}]}, "ai_invalid_credentials"),
+    (401, {}, "ai_invalid_credentials"),
+    (403, {"status": "PERMISSION_DENIED"}, "ai_permission_denied"),
+    (400, {"message": "Model private is no longer available"}, "ai_model_unavailable"),
+    (404, {}, "ai_model_unavailable"),
+    (400, {}, "ai_incompatible_request"),
+    (429, {}, "ai_provider_quota"),
+    (503, {}, "ai_provider_saturated"),
+    (504, {}, "ai_timeout"),
+])
+def test_classifies_gemini_failures_without_echoing_remote_data(status, detail, code):
+    request = httpx.Request("POST", "https://example.invalid/?key=SECRET")
+    response = httpx.Response(status, request=request, json={"error": {"context": "SECRET", **detail}})
+    with pytest.raises(httpx.HTTPStatusError) as failure:
+        response.raise_for_status()
+    assert gemini_error_code(failure.value) == code
+    assert "SECRET" not in provider_error_message(failure.value, "gemini")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("native", [False, True])
+async def test_gemini_does_not_restart_after_persistent_tool(monkeypatch, native):
+    profile = ai_gateway.AiProfile("gemini", "https://gemini.invalid/openai", "test", "test", "fake", 0, 5, True, 3)
+    first = (
+        {"candidates": [{"content": {"parts": [{"functionCall": {"name": "create_task", "args": {}}}]}}]}
+        if native else {"choices": [{"message": {"tool_calls": [
+            {"id": "call", "function": {"name": "create_task", "arguments": "{}"}}
+        ]}}]}
+    )
+    request = httpx.Request("POST", "https://gemini.invalid")
+    post = AsyncMock(side_effect=[
+        httpx.Response(200, request=request, json=first),
+        httpx.Response(503, request=request, headers={"Retry-After": "0"}),
+    ])
+    execute = AsyncMock(return_value=({"ok": True}, ["tasks"]))
+    monkeypatch.setattr(ai_gateway, "_post", post)
+    monkeypatch.setattr(ai_service.ai_tools, "execute_tool", execute)
+    monkeypatch.setattr(ai_service, "build_context", AsyncMock(return_value={}))
+    monkeypatch.setattr(ai_service, "render_context_text", lambda _: "")
+
+    result = await ai_service.generate_reply(
+        None, None, "Crea una tarea", [], profile=profile,
+        image_data_urls=["data:image/png;base64,AA=="] if native else [],
+    )
+
+    assert result.source == "error"
+    assert result.error_code == "ai_provider_saturated"
+    assert result.events == ["tasks"]
+    assert "ya se guardaron" in result.reply
+    assert post.await_count == 2
+    execute.assert_awaited_once()
 
 
 @pytest.mark.parametrize("code,expected", [(401, "clave"), (403, "permisos"), (404, "modelo"), (429, "límite"), (503, "solicitud")])
@@ -39,7 +93,12 @@ async def test_gemini_chat_reports_network_failure_without_heuristic(monkeypatch
     monkeypatch.setattr(ai_service, "_run_model", fail)
     result = await ai_service.generate_reply(None, None, "hola", [])
     assert result.source == "error"
-    assert "conexión" in result.reply
+    if isinstance(error, httpx.TimeoutException):
+        assert result.error_code == "ai_timeout"
+        assert "a tiempo" in result.reply
+    else:
+        assert result.error_code == "ai_connection_error"
+        assert "conexión" in result.reply
     assert "SECRET" not in result.reply
 
 
@@ -162,5 +221,5 @@ async def test_assistant_logs_only_provider_error_metadata(monkeypatch, caplog):
     result = await ai_service.generate_reply(None, None, "mensaje privado", [])
     assert result.source == "error"
     messages = [record.getMessage() for record in caplog.records if record.name == ai_service.__name__]
-    assert messages == ["Error de IA tipo=HTTPStatusError proveedor=gemini estado=503"]
+    assert messages == ["Error de IA tipo=HTTPStatusError proveedor=gemini estado=503 codigo=ai_provider_saturated"]
     assert all(record.exc_info is None for record in caplog.records)
