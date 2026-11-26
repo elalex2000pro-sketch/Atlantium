@@ -485,6 +485,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ proposal_id: proposalId, approve }),
     }),
+  assistantOperation: (requestId: string, documentId?: string | null) => {
+    const query = documentId ? `?document_id=${encodeURIComponent(documentId)}` : "";
+    return request<ChatResponse>(`/api/v1/assistant/operations/${encodeURIComponent(requestId)}${query}`);
+  },
+  assistantProposal: (proposalId: string, documentId?: string | null) => {
+    const query = documentId ? `?document_id=${encodeURIComponent(documentId)}` : "";
+    return request<import("@/lib/types").ProposalStatus>(
+      `/api/v1/assistant/proposals/${encodeURIComponent(proposalId)}${query}`,
+    );
+  },
   clearAssistant: () =>
     request<void>("/api/v1/assistant/messages", { method: "DELETE" }),
   assistantExport: () => request<AssistantMessage[]>("/api/v1/assistant/messages/export"),

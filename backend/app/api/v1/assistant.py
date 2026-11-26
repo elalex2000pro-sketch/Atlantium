@@ -42,6 +42,7 @@ from app.schemas.assistant import (
     PanelPreview,
     PanelPreviewRequest,
     PendingAction,
+    ProposalStatus,
 )
 from app.services import ai_gateway, ai_panel_context, ai_service, ai_studio_service, ai_tools, assistant_operations
 from app.services.ai_errors import AiRequestRejected, gemini_error_code, log_provider_error, provider_error_message
@@ -342,14 +343,17 @@ async def _pending_action(db, user_id, operation) -> PendingAction | None:
     return PendingAction(proposal_id=operation.proposal_id, tool=operation.tool, args={"elemento": label})
 
 
-async def _replay_chat(db, user_id, operation, document_id) -> ChatResponse:
+async def _build_replay_response(
+    db, user_id, operation, document_id, *, mutate: bool = True
+) -> ChatResponse:
     age = assistant_operations.age(operation.started_at)
     if age >= assistant_operations.REPLAY_TTL:
         raise HTTPException(410, "El resultado ha caducado. Este envío no se ejecutará de nuevo.")
     if operation.state == "running" and age < assistant_operations.TURN_TTL:
         raise HTTPException(409, "Este envío sigue en curso. Consulta de nuevo con el mismo identificador.")
     if operation.state != "completed":
-        operation.state = "interrupted"
+        if mutate:
+            operation.state = "interrupted"
         response = ChatResponse(
             reply=(
                 f"El turno se interrumpió. Cambios guardados: {len(operation.effects)}. "
@@ -358,7 +362,8 @@ async def _replay_chat(db, user_id, operation, document_id) -> ChatResponse:
             source="error", error_code="ai_operation_interrupted",
             created_at=operation.started_at, document_id=document_id,
         )
-        await db.commit()
+        if mutate:
+            await db.commit()
         return response
 
     message = await assistant_operations.owned_message(db, user_id, operation.reply_id)
@@ -368,8 +373,58 @@ async def _replay_chat(db, user_id, operation, document_id) -> ChatResponse:
     if assistant_operations.age(message.created_at) < assistant_operations.PROPOSAL_TTL:
         pending = await _pending_action(db, user_id, operation)
     response = _chat_response(message, document_id, pending, operation.error_code)
-    await db.commit()
+    if mutate:
+        await db.commit()
     return response
+
+
+async def _replay_chat(db, user_id, operation, document_id) -> ChatResponse:
+    return await _build_replay_response(db, user_id, operation, document_id, mutate=True)
+
+
+@router.get("/operations/{request_id}", response_model=ChatResponse)
+async def get_operation_status(
+    request_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    document_id: uuid.UUID | None = Query(default=None),
+) -> ChatResponse:
+    """Consulta autenticada de solo lectura para recuperar una operación sin reejecutarla."""
+    operation = await assistant_operations.find(db, current_user.id, request_id=request_id)
+    return await _build_replay_response(db, current_user.id, operation, document_id, mutate=False)
+
+
+@router.get("/proposals/{proposal_id}", response_model=ProposalStatus)
+async def get_proposal_status(
+    proposal_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    document_id: uuid.UUID | None = Query(default=None),
+) -> ProposalStatus:
+    """Consulta autenticada de solo lectura para recuperar una confirmación sin reejecutarla."""
+    user_id = current_user.id
+    operation = await assistant_operations.find(db, user_id, proposal_id=proposal_id)
+    if operation.decision is not None:
+        message = await assistant_operations.owned_message(db, user_id, operation.confirmation_reply_id)
+        if assistant_operations.age(operation.started_at) >= assistant_operations.REPLAY_TTL or message is None:
+            raise HTTPException(410, "La confirmación ya se registró y su respuesta no está disponible.")
+        return ProposalStatus(
+            status="decided",
+            decision=operation.decision,
+            response=_chat_response(message, document_id=document_id),
+        )
+
+    proposal = await assistant_operations.owned_message(db, user_id, operation.reply_id)
+    if (
+        operation.tool is None
+        or proposal is None
+        or assistant_operations.age(proposal.created_at) >= assistant_operations.PROPOSAL_TTL
+    ):
+        raise HTTPException(410, "La propuesta ha caducado o se eliminó del historial.")
+    pending = await _pending_action(db, user_id, operation)
+    if pending is None:
+        raise HTTPException(410, "La propuesta ha caducado o se eliminó del historial.")
+    return ProposalStatus(status="pending", pending_action=pending)
 
 
 @router.post("/confirm", response_model=ChatResponse)
