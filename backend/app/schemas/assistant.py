@@ -28,6 +28,7 @@ class ChatAttachment(MessageAttachment):
 
 
 class ChatRequest(BaseModel):
+    request_id: uuid.UUID | None = None
     message: str = Field(default="", max_length=4000)
     # Imagen adjunta (documento subido antes mediante /files). Opcional.
     document_id: uuid.UUID | None = None
@@ -85,13 +86,15 @@ class PanelPreview(BaseModel):
 class PendingAction(BaseModel):
     """Accion destructiva que espera confirmacion del usuario."""
 
+    proposal_id: uuid.UUID
     tool: str
     args: dict = Field(default_factory=dict)
 
 
 class ConfirmRequest(BaseModel):
-    tool: str
-    args: dict = Field(default_factory=dict)
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: uuid.UUID
     approve: bool
 
 

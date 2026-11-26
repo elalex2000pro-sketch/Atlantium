@@ -365,15 +365,27 @@ async function main() {
       await page.reload();
       await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-3.1-pro-preview');
       let providerReplied = false;
+      const requestIds = [];
       const reply = 'Este modelo ya no está disponible. Elige otro en Ajustes';
       await page.route('**/api/v1/assistant/messages?*', route => route.fulfill({ json: providerReplied ? [{ id: 'mock-provider-error', role: 'assistant', content: reply, source: 'error', created_at: new Date().toISOString(), document_id: null }] : [] }));
       await page.route('**/api/v1/assistant/chat', route => {
+        requestIds.push(route.request().postDataJSON().request_id);
+        if (requestIds.length === 1) {
+          return route.fulfill({ status: 200, contentType: 'application/json', body: '{"reply":' });
+        }
         providerReplied = true;
         return route.fulfill({ json: { reply, source: 'error', created_at: new Date().toISOString(), document_id: null, pending_action: null } });
       });
       await page.getByLabel('Mensaje para la IA').fill('Consulta de prueba');
       await page.getByRole('button', { name: 'Enviar mensaje', exact: true }).click();
+      await page.getByRole('button', { name: 'Reintentar el mismo envío' }).click();
       await page.getByText(reply, { exact: true }).waitFor();
+      assert.match(requestIds[0], /^[0-9a-f-]{36}$/);
+      assert.equal(requestIds[1], requestIds[0]);
+      await page.getByLabel('Mensaje para la IA').fill('Consulta de prueba');
+      await page.getByRole('button', { name: 'Enviar mensaje', exact: true }).click();
+      await until(() => requestIds.length === 3, 'Nuevo envío intencionado');
+      assert.notEqual(requestIds[2], requestIds[0]);
       assert.equal(await page.getByRole('link', { name: 'Elegir otro modelo en Ajustes' }).getAttribute('href'), '/settings?tab=integrations');
       await page.getByRole('button', { name: 'Modelo por defecto', exact: true }).click();
       await page.waitForFunction(() => document.querySelector('select[aria-label="Modelo de Gemini"]')?.value === 'gemini-3.8-flash');

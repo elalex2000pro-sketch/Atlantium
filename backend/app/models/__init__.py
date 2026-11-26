@@ -2,6 +2,7 @@
 from app.db.base import Base
 from app.models.ai_output import AiOutput
 from app.models.assistant_message import AssistantMessage
+from app.models.assistant_operation import AssistantOperation
 from app.models.book import Book, BookMessage, BookSection
 from app.models.chat import ChatConversation, ChatMember, ChatMessage
 from app.models.classwork import ClassAssignment, ClassAssignmentCompletion, ClassTopic, ClassWorkFile, ClassAssignmentAttachment, ClassWorkComment
@@ -40,6 +41,7 @@ from app.models.user_ai_key import UserAiKey
 __all__ = [
     "AiOutput",
     "AssistantMessage",
+    "AssistantOperation",
     "Base",
     "Book",
     "BookMessage",
