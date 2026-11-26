@@ -43,7 +43,7 @@ from app.schemas.assistant import (
     PanelPreviewRequest,
     PendingAction,
 )
-from app.services import ai_gateway, ai_panel_context, ai_service, ai_studio_service, ai_tools
+from app.services import ai_gateway, ai_panel_context, ai_service, ai_studio_service, ai_tools, assistant_operations
 from app.services.ai_errors import AiRequestRejected, gemini_error_code, log_provider_error, provider_error_message
 from app.services.realtime import notify
 
@@ -205,6 +205,19 @@ async def panel_chat(payload: PanelChatRequest, current_user: CurrentUser, db: D
 async def chat(
     payload: ChatRequest, current_user: CurrentUser, db: DbSession
 ) -> ChatResponse:
+    user_id = current_user.id
+    request_id = payload.request_id
+    if request_id is None:
+        profile = await ai_gateway.load_profile(db, current_user)
+        ai_gateway.require_personal_key(profile)
+        raise HTTPException(428, "Actualiza Atlantium para enviar solicitudes al asistente de forma segura.")
+
+    operation, created = await assistant_operations.reserve(
+        db, user_id, request_id, assistant_operations.fingerprint(payload),
+    )
+    if not created:
+        return await _replay_chat(db, user_id, operation, payload.document_id)
+
     prepared = _prepare_attachments(payload.attachments)
     if (
         not payload.message.strip()
@@ -253,6 +266,9 @@ async def chat(
     db.add(user_message)
     await db.commit()
 
+    async def execute(name: str, args: dict):
+        return await assistant_operations.execute(db, current_user, request_id, name, args)
+
     try:
         result_ai = await ai_service.generate_reply(
             db,
@@ -265,8 +281,13 @@ async def chat(
             page_context=payload.page_context,
             page_context_label=payload.page_context_label,
             profile=profile,
+            execute=execute,
         )
     except AiRequestRejected:
+        await db.rollback()
+        failed = await assistant_operations.active(db, user_id, request_id)
+        failed.state = "interrupted"
+        await db.commit()
         raise
     except Exception as exc:  # noqa: BLE001 - el usuario siempre debe recibir respuesta
         log_provider_error(logger, current_user.ai_provider or settings.ai_default_provider, exc)
@@ -278,65 +299,126 @@ async def chat(
             source="error",
         )
 
+    operation = await assistant_operations.active(db, user_id, request_id)
+    proposal = result_ai.pending_action
+    pending = None
+    if proposal:
+        target = await ai_tools.resolve_delete_target(db, current_user, proposal["tool"], proposal["args"])
+        if target is None:
+            result_ai.reply += "\nNo se encontró un elemento único para confirmar el borrado."
+        else:
+            operation.proposal_id = uuid.uuid4()
+            operation.tool = proposal["tool"]
+            operation.target_id = target.id
+            pending = await _pending_action(db, user_id, operation)
+
     assistant_message = AssistantMessage(
-        user_id=current_user.id, role="assistant", content=result_ai.reply, source=result_ai.source
+        user_id=user_id, role="assistant", content=result_ai.reply, source=result_ai.source,
     )
     db.add(assistant_message)
+    await db.flush()
+    operation.reply_id = assistant_message.id
+    operation.error_code = result_ai.error_code
+    operation.state = "completed"
+    response = _chat_response(assistant_message, payload.document_id, pending, operation.error_code)
     await db.commit()
-    await db.refresh(assistant_message)
+    notify(user_id, "assistant", {"action": "message", "id": str(assistant_message.id)})
+    return response
 
-    notify(current_user.id, "assistant", {"action": "message", "id": str(assistant_message.id)})
-    for event in set(result_ai.events):
-        notify(current_user.id, event, {"action": "changed", "by": "ai"})
 
-    pending = (
-        PendingAction(**result_ai.pending_action) if result_ai.pending_action else None
-    )
+def _chat_response(message, document_id=None, pending=None, error_code=None) -> ChatResponse:
     return ChatResponse(
-        reply=result_ai.reply,
-        source=result_ai.source,
-        created_at=assistant_message.created_at,
-        document_id=payload.document_id,
-        pending_action=pending,
-        error_code=result_ai.error_code,
+        reply=message.content, source=message.source, created_at=message.created_at,
+        document_id=document_id, pending_action=pending, error_code=error_code,
     )
+
+
+async def _pending_action(db, user_id, operation) -> PendingAction | None:
+    if operation.decision is not None or not (operation.proposal_id and operation.tool and operation.target_id):
+        return None
+    label, _ = await ai_tools.delete_target(db, user_id, operation.tool, operation.target_id)
+    if label is None:
+        return None
+    return PendingAction(proposal_id=operation.proposal_id, tool=operation.tool, args={"elemento": label})
+
+
+async def _replay_chat(db, user_id, operation, document_id) -> ChatResponse:
+    age = assistant_operations.age(operation.started_at)
+    if age >= assistant_operations.REPLAY_TTL:
+        raise HTTPException(410, "El resultado ha caducado. Este envío no se ejecutará de nuevo.")
+    if operation.state == "running" and age < assistant_operations.TURN_TTL:
+        raise HTTPException(409, "Este envío sigue en curso. Consulta de nuevo con el mismo identificador.")
+    if operation.state != "completed":
+        operation.state = "interrupted"
+        response = ChatResponse(
+            reply=(
+                f"El turno se interrumpió. Cambios guardados: {len(operation.effects)}. "
+                "Revisa los cambios antes de iniciar otro envío."
+            ),
+            source="error", error_code="ai_operation_interrupted",
+            created_at=operation.started_at, document_id=document_id,
+        )
+        await db.commit()
+        return response
+
+    message = await assistant_operations.owned_message(db, user_id, operation.reply_id)
+    if message is None:
+        raise HTTPException(410, "La respuesta ya no está en el historial. El envío no se repetirá.")
+    pending = None
+    if assistant_operations.age(message.created_at) < assistant_operations.PROPOSAL_TTL:
+        pending = await _pending_action(db, user_id, operation)
+    response = _chat_response(message, document_id, pending, operation.error_code)
+    await db.commit()
+    return response
 
 
 @router.post("/confirm", response_model=ChatResponse)
 async def confirm_action(
-    payload: ConfirmRequest, current_user: CurrentUser, db: DbSession
+    payload: ConfirmRequest, current_user: CurrentUser, db: DbSession,
 ) -> ChatResponse:
-    if payload.tool not in ai_tools.DESTRUCTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Esta accion no requiere confirmacion",
+    user_id = current_user.id
+    operation = await assistant_operations.lock(db, user_id, proposal_id=payload.proposal_id)
+    age = assistant_operations.age(operation.started_at)
+    if operation.decision is not None:
+        if operation.decision != payload.approve:
+            raise HTTPException(409, "Esta propuesta ya tiene una decisión distinta.")
+        message = await assistant_operations.owned_message(db, user_id, operation.confirmation_reply_id)
+        if age >= assistant_operations.REPLAY_TTL or message is None:
+            raise HTTPException(410, "La confirmación ya se registró y su respuesta no está disponible.")
+        response = _chat_response(message)
+        await db.commit()
+        return response
+
+    proposal = await assistant_operations.owned_message(db, user_id, operation.reply_id)
+    if operation.tool is None or proposal is None or assistant_operations.age(proposal.created_at) >= assistant_operations.PROPOSAL_TTL:
+        operation.target_id = operation.tool = None
+        await db.commit()
+        raise HTTPException(410, "La propuesta ha caducado o se eliminó del historial.")
+    reply, events = "De acuerdo, no he realizado ningún cambio.", []
+    source = "ai"
+    if payload.approve:
+        if operation.tool not in ai_tools.DESTRUCTIVE:
+            raise HTTPException(409, "La herramienta de la propuesta ya no está disponible.")
+        label, events = await ai_tools.delete_target(
+            db, user_id, operation.tool, operation.target_id, confirm=True,
         )
+        if label is None:
+            reply, source = "No se pudo completar el borrado: el elemento ya no está disponible.", "error"
+        else:
+            reply = f"Listo. He eliminado: {label}."
 
-    if not payload.approve:
-        reply = "De acuerdo, no he realizado ningun cambio."
-        return await _store_assistant(db, current_user, reply, [])
-
-    result, events = await ai_tools.execute_tool(db, current_user, payload.tool, payload.args)
-    if result.get("ok"):
-        reply = f"Listo. He eliminado: {result.get('deleted', 'el elemento')}."
-    else:
-        reply = f"No he podido completarlo: {result.get('error', 'error desconocido')}."
-    return await _store_assistant(db, current_user, reply, events)
-
-
-async def _store_assistant(
-    db: DbSession, current_user: CurrentUser, reply: str, events: list[str]
-) -> ChatResponse:
-    message = AssistantMessage(
-        user_id=current_user.id, role="assistant", content=reply, source="ai"
-    )
+    message = AssistantMessage(user_id=user_id, role="assistant", content=reply, source=source)
     db.add(message)
+    await db.flush()
+    operation.decision = payload.approve
+    operation.confirmation_reply_id = message.id
+    operation.target_id = operation.tool = None
+    response = _chat_response(message)
     await db.commit()
-    await db.refresh(message)
-    notify(current_user.id, "assistant", {"action": "message", "id": str(message.id)})
+    notify(user_id, "assistant", {"action": "message", "id": str(message.id)})
     for event in set(events):
-        notify(current_user.id, event, {"action": "changed", "by": "ai"})
-    return ChatResponse(reply=reply, source="ai", created_at=message.created_at)
+        notify(user_id, event, {"action": "changed", "by": "ai"})
+    return response
 
 
 @router.delete("/messages", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

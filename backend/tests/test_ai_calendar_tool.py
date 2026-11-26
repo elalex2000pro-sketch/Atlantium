@@ -22,6 +22,9 @@ class _FakeSession:
     async def commit(self) -> None:
         self.committed = True
 
+    async def flush(self) -> None:
+        pass
+
     async def refresh(self, value: object) -> None:
         if getattr(value, "id", None) is None:
             value.id = uuid4()  # type: ignore[attr-defined]

@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from collections.abc import Awaitable, Callable
 
 import httpx
 from sqlalchemy import select
@@ -79,6 +80,9 @@ _VISUAL_PROMPT = (
     "Analiza el contenido de estas imágenes o fragmentos de libro escaneado y responde a la "
     "duda del estudiante con precisión."
 )
+
+
+ToolExecutor = Callable[[str, dict[str, Any]], Awaitable[tuple[dict, list[str]]]]
 
 
 @dataclass
@@ -306,6 +310,7 @@ async def generate_reply(
     page_context_label: str | None = None,
     *,
     profile: AiProfile | None = None,
+    execute: ToolExecutor | None = None,
 ) -> AiResult:
     """Responde al usuario. Usa el modelo (con herramientas y vision) si esta
     disponible; si no, cae al motor heuristico.
@@ -343,14 +348,20 @@ async def generate_reply(
     if not prompt and page_context:
         prompt = "Resume el texto del PDF que estoy leyendo."
 
+    runner_options = {}
+    if execute is not None:
+        # Cierra la lectura del contexto antes de entrar en el bucle remoto.
+        await db.commit()
+        runner_options["execute"] = execute
+
     if profile.configured:
         try:
             if profile.provider == "gemini" and images:
                 # Gemini recibe las imagenes con `inlineData` en su API nativa.
-                result = await _run_model_gemini(db, user, profile, system, history, prompt, images)
+                result = await _run_model_gemini(db, user, profile, system, history, prompt, images, **runner_options)
             else:
                 result = await _run_model(
-                    db, user, profile, system, history, prompt, images
+                    db, user, profile, system, history, prompt, images, **runner_options
                 )
             if result.reply:
                 return result
@@ -409,6 +420,7 @@ async def _run_model(
     history: list[dict[str, str]],
     message: str,
     image_data_urls: list[str],
+    *, execute: ToolExecutor | None = None,
 ) -> AiResult:
     """Bucle de tool-calling por la API compatible con OpenAI.
 
@@ -450,7 +462,10 @@ async def _run_model(
                         pending_action={"tool": name, "args": args},
                         events=events,
                     )
-                payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                if execute is None:
+                    payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                else:
+                    payload, ev = await execute(name, args)
                 events.extend(ev)
                 messages.append(
                     {
@@ -460,8 +475,14 @@ async def _run_model(
                     }
                 )
     except Exception as exc:
-        if profile.provider != "gemini" or not events:
+        if not events or (profile.provider != "gemini" and execute is None):
             raise
+        if profile.provider != "gemini":
+            log_provider_error(logger, profile.provider, exc)
+            return AiResult(
+                "Algunos cambios ya se guardaron. Revisa los cambios antes de volver a enviar la solicitud.",
+                "error", events=events, error_code=AiErrorCode.PROVIDER_ERROR,
+            )
         return _gemini_failure(exc, events)
 
     if profile.provider == "gemini":
@@ -569,6 +590,7 @@ async def _run_model_gemini(
     history: list[dict[str, str]],
     message: str,
     image_data_urls: list[str],
+    *, execute: ToolExecutor | None = None,
 ) -> AiResult:
     """Bucle de tool-calling con la API nativa de Gemini e `inlineData`."""
     operation = "imagen" if image_data_urls else "texto"
@@ -614,7 +636,10 @@ async def _run_model_gemini(
                         pending_action={"tool": name, "args": args},
                         events=events,
                     )
-                payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                if execute is None:
+                    payload, ev = await ai_tools.execute_tool(db, user, name, args)
+                else:
+                    payload, ev = await execute(name, args)
                 events.extend(ev)
                 responses.append(
                     {

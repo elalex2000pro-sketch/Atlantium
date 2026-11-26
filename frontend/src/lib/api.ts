@@ -455,6 +455,7 @@ export const api = {
       body: JSON.stringify({ ...payload, approval }),
     }),
   chat: (
+    requestId: string,
     message: string,
     documentId?: string | null,
     attachments: ChatAttachment[] = [],
@@ -464,6 +465,7 @@ export const api = {
     request<ChatResponse>("/api/v1/assistant/chat", {
       method: "POST",
       body: JSON.stringify({
+        request_id: requestId,
         message,
         document_id: documentId ?? null,
         attachments: attachments.map((attachment) => ({
@@ -478,10 +480,10 @@ export const api = {
         page_context_label: pageContextLabel ?? null,
       }),
     }),
-  confirmAction: (tool: string, args: Record<string, unknown>, approve: boolean) =>
+  confirmAction: (proposalId: string, approve: boolean) =>
     request<ChatResponse>("/api/v1/assistant/confirm", {
       method: "POST",
-      body: JSON.stringify({ tool, args, approve }),
+      body: JSON.stringify({ proposal_id: proposalId, approve }),
     }),
   clearAssistant: () =>
     request<void>("/api/v1/assistant/messages", { method: "DELETE" }),
