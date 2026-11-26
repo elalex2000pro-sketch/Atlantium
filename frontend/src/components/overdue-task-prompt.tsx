@@ -8,6 +8,19 @@ import { api } from "@/lib/api";
 import { isSnoozed, TASK_REMINDER_EVENT } from "@/lib/task-snooze";
 import type { Task } from "@/lib/types";
 
+type OverduePromptsResult = { tasks: Task[]; remaining: number };
+const inFlightOverduePrompts = new Map<string, Promise<OverduePromptsResult>>();
+
+function claimOverduePrompts(userId: string): Promise<OverduePromptsResult> {
+  const existing = inFlightOverduePrompts.get(userId);
+  if (existing) return existing;
+  const request = api.overduePrompts().finally(() => {
+    inFlightOverduePrompts.delete(userId);
+  });
+  inFlightOverduePrompts.set(userId, request);
+  return request;
+}
+
 export function OverdueTaskPrompt() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -27,8 +40,8 @@ export function OverdueTaskPrompt() {
       if (!userId || open.current || busy || document.visibilityState !== "visible") return;
       busy = true;
       try {
-        const result = await api.overduePrompts();
-        if (!cancelled && result.tasks.length) {
+        const result = await claimOverduePrompts(userId);
+        if (!cancelled && result.tasks.length && !open.current && !dialog.current?.open) {
           open.current = true; setTasks(result.tasks); setRemaining(result.remaining); setDismissed([]);
           dialog.current?.showModal();
         }
